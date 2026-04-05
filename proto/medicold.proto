@@ -1,0 +1,253 @@
+syntax = "proto3";
+
+package medicold;
+
+// Storage Service (Service 1)
+service StorageService{
+    rpc RegisteStock(StockBatch) returns (RegisterStockResponse);
+    rpc GetInventory(GetInventoryRequest) returns (InventoryRecord);
+    rpc RemoveBatch(RemoveBatchRequest) returns (RemoveBatchResponse);
+}
+
+// Monitoring Service (Service 2)
+service MonitoringService{
+    // ⭐ CLIENT-SIDE STREAMING: Sensor kirim stream data ke server
+    rpc StreamTelemetry(stream TelemetryReading) returns (TelemetrySummary);
+    rpc GetAllStorageStatus(Empty) returns (AllStorageStatus);
+    rpc GetStorageHistory(StorageHistoryRequest) returns (StorageHistory);
+}
+
+// Alert Service (Service 3)
+service AlertService{
+    rpc GetAlerts(GetAlertsRequest) returns (AlertList);
+    rpc ResolveAlert(ResolveAlertRequest) returns (ResolveAlertResponse);
+    // SERVER-SIDE STREAMING: Server push alerts ke dashboard
+    rpc WatchAlerts(WatchAlertsRequest) returns (stream AlertNotification);
+}
+
+// Report Service (Service 4)
+service ReportService{
+    rpc GenerateDailyReport(DailyReportRequest) returns (DailyReport);
+    rpc ExportCSV(ExportRequest) returns (ExportResponse);
+    rpc GetComplianceStatus(ComplianceRequest) returns (ComplianceReport);
+}
+
+// ============================================
+// MESSAGES FOR STORAGE SERVICE
+// ============================================
+message StockBatch{
+    string batch_id = 1;
+    string storage_id = 2;
+    string content_type = 3;
+    int32 quantity = 4;
+    string expiry_date = 5;
+    string notes = 6;
+    double min_temp = 7;
+    double max_temp = 8;
+}
+
+message RegisterStockResponse{
+    bool success = 1;
+    string message = 2;
+}
+
+message GetInventoryRequest{
+    string storage_id = 1;
+}
+
+message InventoryRecord{
+    string storage_id = 1;
+    repeated StockBatch batches = 2;
+    int64 last_updated = 3;
+}
+
+message RemoveBatchRequest{
+    string batch_id = 1;
+    string reason = 2;
+}
+
+message RemoveBatchResponse{
+    bool success = 1;
+    string message = 2;
+}
+//Message untuk monitoring service (Client-side streaming)
+message TelemetryReading{
+    string storage_id = 1;      // ID storage unit
+    double temperature = 2;     // Celsius
+    double humidity = 3;        // Percentage
+    double pressure = 4;        // hPa
+    int64 timestamp = 5;        // Unix timestamp ms
+    string sensor_id = 6;       // ID sensor pengirim
+}
+
+message TelemetrySummary{
+    string storage_id = 1;
+    int32 total_packets_received = 2;
+    double avg_temperature = 3;
+    double min_temperature = 4;
+    double max_temperature = 5;
+    double avg_humidity = 6;
+    int32 anomaly_count = 7;
+    string session_start = 8;
+    string session_end = 9;
+    bool has_critical_alert = 10;
+}
+
+message Empty {}
+
+message AllStorageStatus{
+    repeated StorageStatus storages = 1;
+}
+
+message StorageStatus{
+    string storage_id = 1;
+    double current_temp = 2;
+    double current_humidity = 3;
+    string status = 4;          // Normal | Warning | Critical | Offline
+    int64 last_update = 5;
+    int32 batch_count = 6;
+}
+
+message StorageHistoryRequest{
+    string storage_id = 1;
+    int64 start_time = 2;
+    int64 end_time = 3;
+    int32 limit = 4;
+}
+
+message StorageHistory{
+    string storage_id = 1;
+    repeated TelemetryReadings readings = 2;
+}
+
+message TelemetryReadings{
+    double temperature = 1;
+    double humidity = 2;
+    int64 timestamp = 3;
+}
+
+//Message untuk alert service
+message GetAlertsRequest{
+    string storage_id = 1;
+    AlertSeverity severity = 2;
+    bool resolved_only = 3;
+}
+
+enum AlertSeverity{
+    INFO = 0;
+    WARNING = 1;
+    CRITICAL = 2;
+}
+
+enum AlertType{
+    temp_out_of_range= 0;
+    humidity_high = 1;
+    sensor_disconnected = 2;
+    door_open_too_long = 3;
+    power_failure = 4;
+}
+
+message AlertList{
+    repeated Alert alerts = 1;
+}
+
+message Alert{
+    string alert_id = 1;
+    string storage_id = 2;
+    AlertType type = 3;
+    AlertSeverity severity = 4;
+    string message = 5;
+    double value = 6;
+    double threshold = 7;
+    int64 triggered_at = 8;
+    int64 resolved_at = 9;
+    bool resolved = 10;
+    string resolved_by = 11;
+}
+
+message ResolveAlertRequest{
+    string alert_id = 1;
+    string resolved_by = 2;
+    string resolution_notes = 3;
+}
+
+message ResolveAlertResponse{
+    bool success = 1;
+    string message = 2;
+}
+
+message WatchAlertsRequest{
+    AlertSeverity min_severity = 1;
+}
+
+message AlertNotification{
+    Alert alert = 1;
+    string notification_type = 2;  // New| Updated | Resolved | Existing
+}
+
+//Message untuk report service
+message DailyReportRequest{
+    string date = 1;            // YYYY-MM-DD
+    string storage_id = 2;      // Empty = all storages
+}
+
+message DailyReport{
+    string report_date = 1;
+    string generated_at = 2;
+    repeated StorageDailySummary storage_summaries = 3;
+    int32 total_alerts = 4;
+    int32 critical_alerts = 5;
+    double system_uptime_percentage = 6;
+}
+
+message StorageDailySummary{
+    string storage_id = 1;
+    double avg_temp = 2;
+    double min_temp = 3;
+    double max_temp = 4;
+    int32 total_readings = 5;
+    int32 alert_count = 6;
+    double uptime_percentage = 7;
+    bool within_compliance = 8;
+}
+
+message ExportRequest{
+    string storage_id = 1;
+    int64 start_time = 2;
+    int64 end_time = 3;
+    string format = 4;          // CSV or JSON
+}
+
+message ExportResponse{
+    bool success = 1;
+    string download_url = 2;
+    int64 file_size_bytes = 3;
+    int32 record_count = 4;
+}
+
+message ComplianceRequest{
+    string period_start = 1;    // YYYY-MM-DD
+    string period_end = 2;      // YYYY-MM-DD
+}
+
+message ComplianceReport{
+    bool overall_compliant = 1;
+    repeated StorageCompliance storage_compliance = 2;
+    double average_compliance_rate = 3;
+    repeated string recommendations = 4;
+}
+
+message StorageCompliance{
+    string storage_id = 1;
+    bool compliant = 2;
+    double compliance_percentage = 3;
+    int32 violations_count = 4;
+    repeated ViolationDetail violations = 5;
+}
+
+message ViolationDetail{
+    int64 timestamp = 1;
+    string type = 2;
+    double duration_minutes = 3;
+    double deviation_value = 4;
+}
