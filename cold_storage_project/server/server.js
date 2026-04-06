@@ -12,9 +12,11 @@
  * ============================================================
  */
 
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
-const path = require('path');
+const store = require('./state/dbStore');
 
 // ===================== LOAD PROTO =====================
 
@@ -39,7 +41,16 @@ const reportServiceHandlers = require('./services/reportService');
 
 // ===================== START SERVER =====================
 
-function startServer() {
+async function startServer() {
+    try {
+        console.log('⏳ Initializing PostgreSQL Database...');
+        await store.init();
+        console.log('✅ PostgreSQL Database Initialized.');
+    } catch (err) {
+        console.error('❌ Failed to initialize Database:', err);
+        process.exit(1);
+    }
+
     const server = new grpc.Server();
 
     // Register semua services
@@ -48,7 +59,7 @@ function startServer() {
     server.addService(medicoldProto.AlertService.service, alertServiceHandlers);
     server.addService(medicoldProto.ReportService.service, reportServiceHandlers);
 
-    const PORT = '0.0.0.0:50051';
+    const PORT = process.env.PORT ? `0.0.0.0:${process.env.PORT}` : '0.0.0.0:50051';
 
     server.bindAsync(PORT, grpc.ServerCredentials.createInsecure(), (error, port) => {
         if (error) {

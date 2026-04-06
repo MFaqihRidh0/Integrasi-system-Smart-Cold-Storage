@@ -9,18 +9,16 @@
  * ============================================================
  */
 
-const store = require('../state/inMemoryStore');
+const store = require('../state/dbStore');
 
 const storageLogic = {
 
     /**
      * Mendaftarkan batch obat/vaksin baru ke storage tertentu
-     * @param {Object} batchData - Data batch dari StockBatch message
-     * @returns {Object} { success, message }
      */
-    registerStock(batchData) {
+    async registerStock(batchData) {
         // Validasi storage_id harus ada
-        const storage = store.getStorage(batchData.storage_id);
+        const storage = await store.getStorage(batchData.storage_id);
         if (!storage) {
             return {
                 success: false,
@@ -29,7 +27,7 @@ const storageLogic = {
         }
 
         // Validasi batch_id tidak boleh duplikat
-        const existingBatch = store.getBatch(batchData.batch_id);
+        const existingBatch = await store.getBatch(batchData.batch_id);
         if (existingBatch) {
             return {
                 success: false,
@@ -54,7 +52,7 @@ const storageLogic = {
         }
 
         // Simpan batch
-        store.addBatch({
+        await store.addBatch({
             batch_id: batchData.batch_id,
             storage_id: batchData.storage_id,
             content_type: batchData.content_type || 'Unknown',
@@ -75,11 +73,9 @@ const storageLogic = {
 
     /**
      * Mengambil semua batch yang ada di storage tertentu
-     * @param {string} storageId - ID kulkas
-     * @returns {Object} InventoryRecord { storage_id, batches, last_updated }
      */
-    getInventory(storageId) {
-        const storage = store.getStorage(storageId);
+    async getInventory(storageId) {
+        const storage = await store.getStorage(storageId);
         if (!storage) {
             return {
                 storage_id: storageId,
@@ -88,7 +84,7 @@ const storageLogic = {
             };
         }
 
-        const batches = store.getBatchesByStorage(storageId);
+        const batches = await store.getBatchesByStorage(storageId);
 
         return {
             storage_id: storageId,
@@ -99,12 +95,9 @@ const storageLogic = {
 
     /**
      * Menghapus/mengeluarkan batch dari storage
-     * @param {string} batchId - ID batch yang akan dihapus
-     * @param {string} reason - Alasan penghapusan
-     * @returns {Object} { success, message }
      */
-    removeBatch(batchId, reason) {
-        const removed = store.removeBatch(batchId);
+    async removeBatch(batchId, reason) {
+        const removed = await store.removeBatch(batchId);
 
         if (!removed) {
             return {

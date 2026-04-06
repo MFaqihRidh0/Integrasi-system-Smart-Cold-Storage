@@ -17,13 +17,13 @@ const storageServiceHandlers = {
      * RegisterStock - Mendaftarkan batch baru ke kulkas medis
      * RPC Type: Unary
      */
-    RegisterStock(call, callback) {
+    async RegisterStock(call, callback) {
         const batchData = call.request;
 
         console.log(`\n[StorageService] 📦 RegisterStock request → batch: '${batchData.batch_id}' to storage: '${batchData.storage_id}'`);
 
         try {
-            const result = storageLogic.registerStock(batchData);
+            const result = await storageLogic.registerStock(batchData);
             callback(null, result);
         } catch (error) {
             console.error('[StorageService] ❌ RegisterStock error:', error.message);
@@ -38,13 +38,13 @@ const storageServiceHandlers = {
      * GetInventory - Mengambil inventaris dari storage tertentu
      * RPC Type: Unary
      */
-    GetInventory(call, callback) {
+    async GetInventory(call, callback) {
         const { storage_id } = call.request;
 
         console.log(`\n[StorageService] 📋 GetInventory request → storage: '${storage_id}'`);
 
         try {
-            const result = storageLogic.getInventory(storage_id);
+            const result = await storageLogic.getInventory(storage_id);
             console.log(`[StorageService] → Found ${result.batches.length} batches in '${storage_id}'`);
             callback(null, result);
         } catch (error) {
@@ -60,13 +60,13 @@ const storageServiceHandlers = {
      * RemoveBatch - Menghapus batch dari storage
      * RPC Type: Unary
      */
-    RemoveBatch(call, callback) {
+    async RemoveBatch(call, callback) {
         const { batch_id, reason } = call.request;
 
         console.log(`\n[StorageService] 🗑️  RemoveBatch request → batch: '${batch_id}' | Reason: ${reason}`);
 
         try {
-            const result = storageLogic.removeBatch(batch_id, reason);
+            const result = await storageLogic.removeBatch(batch_id, reason);
             callback(null, result);
         } catch (error) {
             console.error('[StorageService] ❌ RemoveBatch error:', error.message);

@@ -10,19 +10,15 @@
  * ============================================================
  */
 
-const store = require('../state/inMemoryStore');
+const store = require('../state/dbStore');
 const { v4: uuidv4 } = require('uuid');
 
 const alertLogic = {
 
     /**
      * Cek apakah suhu terdeteksi anomali berdasarkan requirement batch
-     * @param {string} storageId - ID storage
-     * @param {number} temperature - Suhu yang terukur
-     * @param {Object} batch - Batch dengan min_temp & max_temp
-     * @returns {Object|null} Alert object atau null
      */
-    checkTemperatureAnomaly(storageId, temperature, batch) {
+    async checkTemperatureAnomaly(storageId, temperature, batch) {
         let severity = 0; // INFO
         let threshold = 0;
 
@@ -44,27 +40,57 @@ const alertLogic = {
             message: `Suhu ${temperature}°C di luar batas yang diizinkan [${batch.min_temp}°C ~ ${batch.max_temp}°C] untuk batch '${batch.batch_id}' (${batch.content_type})`,
             value: temperature,
             threshold: threshold,
-            triggered_at: Date.now(),
-            resolved: false,
-            resolved_at: 0,
-            resolved_by: ''
+            triggered_at: Date.now()
         };
 
-        store.addAlert(alert);
+        const createdAlert = await store.addAlert(alert);
 
         const severityLabel = ['INFO', 'WARNING', 'CRITICAL'][severity];
         console.log(`[AlertLogic] 🚨 ${severityLabel} Alert → Storage '${storageId}' | Temp: ${temperature}°C | Threshold: ${threshold}°C`);
 
-        return alert;
+        return createdAlert;
+    },
+
+    /**
+     * Cek anomali suhu standar (saat kulkas kosong / tanpa batch spesifik)
+     */
+    async checkGlobalTemperatureAnomaly(storageId, temperature) {
+        let severity = 0; // INFO
+        let threshold = 0;
+
+        if (temperature > 8 || temperature < -80) {
+            severity = 2; // CRITICAL
+            threshold = temperature > 8 ? 8 : -80;
+        } else if (temperature > 5 || temperature < -75) {
+            severity = 1; // WARNING
+            threshold = temperature > 5 ? 5 : -75;
+        } else {
+            return null; // Dalam range normal
+        }
+
+        const alert = {
+            alert_id: uuidv4(),
+            storage_id: storageId,
+            type: 0, // TEMP_OUT_OF_RANGE
+            severity: severity,
+            message: `Suhu ${temperature}°C di luar batas standar sistem [-75°C ~ 5°C] (Kulkas kosong)`,
+            value: temperature,
+            threshold: threshold,
+            triggered_at: Date.now()
+        };
+
+        const createdAlert = await store.addAlert(alert);
+
+        const severityLabel = ['INFO', 'WARNING', 'CRITICAL'][severity];
+        console.log(`[AlertLogic] 🚨 ${severityLabel} Global Alert → Storage '${storageId}' | Temp: ${temperature}°C | Threshold: ${threshold}°C`);
+
+        return createdAlert;
     },
 
     /**
      * Cek apakah kelembaban terlalu tinggi
-     * @param {string} storageId - ID storage
-     * @param {number} humidity - Kelembaban yang terukur
-     * @returns {Object|null} Alert object atau null
      */
-    checkHumidityAnomaly(storageId, humidity) {
+    async checkHumidityAnomaly(storageId, humidity) {
         if (humidity <= 80) return null;
 
         const severity = humidity > 90 ? 2 : 1; // CRITICAL if > 90%, WARNING if > 80%
@@ -78,46 +104,37 @@ const alertLogic = {
             message: `Kelembaban ${humidity}% melebihi batas aman (${threshold}%) di storage '${storageId}'`,
             value: humidity,
             threshold: threshold,
-            triggered_at: Date.now(),
-            resolved: false,
-            resolved_at: 0,
-            resolved_by: ''
+            triggered_at: Date.now()
         };
 
-        store.addAlert(alert);
+        const createdAlert = await store.addAlert(alert);
 
         const severityLabel = ['INFO', 'WARNING', 'CRITICAL'][severity];
         console.log(`[AlertLogic] 💧 ${severityLabel} Humidity Alert → Storage '${storageId}' | Humidity: ${humidity}%`);
 
-        return alert;
+        return createdAlert;
     },
 
     /**
      * Mengambil daftar alert berdasarkan filter
-     * @param {string} storageId - Filter by storage (kosong = semua)
-     * @param {number} severity - Filter minimum severity
-     * @param {boolean} resolvedOnly - Hanya tampilkan yang sudah resolved
-     * @returns {Object} AlertList { alerts }
      */
-    getAlerts(storageId, severity, resolvedOnly) {
-        const alerts = store.getAlerts(storageId, severity, resolvedOnly);
+    async getAlerts(storageId, severity, resolvedOnly) {
+        const alerts = await store.getAlerts(storageId, severity, resolvedOnly);
         return { alerts };
     },
 
     /**
      * Menyelesaikan (resolve) alert tertentu
-     * @param {string} alertId - ID alert yang akan di-resolve
-     * @param {string} resolvedBy - Nama orang yang resolve
-     * @param {string} notes - Catatan resolusi
-     * @returns {Object} { success, message }
      */
-    resolveAlert(alertId, resolvedBy, notes) {
-        const resolved = store.resolveAlert(alertId, resolvedBy, notes);
+    async resolveAlert(alertId, resolvedBy, notes) {
+        if (!alertId) throw new Error("Alert ID is required");
+
+        const resolved = await store.resolveAlert(alertId, resolvedBy, notes);
 
         if (!resolved) {
             return {
                 success: false,
-                message: `Alert '${alertId}' tidak ditemukan`
+                message: `Alert '${alertId}' tidak ditemukan atau sudah di-resolve`
             };
         }
 
@@ -125,7 +142,7 @@ const alertLogic = {
 
         return {
             success: true,
-            message: `Alert '${alertId}' berhasil di-resolve oleh '${resolvedBy}'`
+            message: `Alert '${alertId}' berhasil diubah statusnya (Resolved) oleh '${resolvedBy}'`
         };
     }
 };

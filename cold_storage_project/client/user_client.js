@@ -60,6 +60,53 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
+const userName = process.argv[2] || `User_${Math.floor(Math.random() * 100)}`;
+
+// ===================== WATCH ALERTS =====================
+function startWatchingAlerts() {
+    const call = alertClient.WatchAlerts({ min_severity: 0 }); // Terima semua alert
+
+    call.on('data', (response) => {
+        const alert = response.alert;
+        const type = response.notification_type;
+
+        // Skip initial connection message from logging as popup
+        if (type === 'CONNECTED') {
+            return;
+        }
+
+        console.log('\n\n======================================================');
+        if (type === 'NEW_ALERT') {
+            console.log(`🚨 [BROADCAST] NEW ALERT DETECTED! 🚨`);
+        } else if (type === 'ALERT_RESOLVED') {
+            const byMe = alert.resolved_by === userName;
+            console.log(`✅ [BROADCAST] ALERT RESOLVED by ${alert.resolved_by}${byMe ? ' (You)' : ''}`);
+        }
+        
+        const severityLabels = ['INFO', 'WARNING', 'CRITICAL'];
+        console.log(`- Alert ID: ${alert.alert_id}`);
+        console.log(`- Storage: ${alert.storage_id}`);
+        console.log(`- Severity: ${severityLabels[alert.severity]}`);
+        console.log(`- Message: ${alert.message}`);
+        console.log(`- Value: ${Math.round(alert.value*100)/100} / Threshold: ${Math.round(alert.threshold*100)/100}`);
+        if(alert.resolved) {
+            console.log(`- 📌 Status: RESOLVED by ${alert.resolved_by} (Notes: ${alert.resolution_notes})`);
+        } else {
+            console.log(`- 📌 Status: ACTIVE`);
+        }
+        console.log('======================================================\n');
+        
+        // Render menu again to prevent broken CLI
+        rl.prompt(true);
+    });
+
+    call.on('error', (error) => {
+        if (error.code !== 1) { // Not Cancelled
+            console.error('\n❌ WatchAlerts Stream Error:', error.message);
+        }
+    });
+}
+
 function ask(question) {
     return new Promise(resolve => rl.question(question, resolve));
 }
@@ -193,7 +240,8 @@ async function resolveAlert() {
     console.log('\n--- ✅ Resolve Alert ---');
 
     const alert_id = await ask('Alert ID: ');
-    const resolved_by = await ask('Resolved by (nama): ');
+    // Resolve otomatis menggunakan nama User yang login (terminal)
+    const resolved_by = userName; 
     const resolution_notes = await ask('Catatan resolusi: ');
 
     alertClient.ResolveAlert({
@@ -315,7 +363,7 @@ async function getComplianceStatus() {
 function showMenu() {
     console.log('\n');
     console.log('╔══════════════════════════════════════════════════════════╗');
-    console.log('║   💻 CryoMedics Admin Panel                             ║');
+    console.log(`║   💻 CryoMedics User Panel - Welcome, ${userName.padEnd(18)}  ║`);
     console.log('╠══════════════════════════════════════════════════════════╣');
     console.log('║                                                          ║');
     console.log('║   📦 Storage                                             ║');
@@ -347,7 +395,7 @@ function showMenu() {
             case '7': await exportCSV(); break;
             case '8': await getComplianceStatus(); break;
             case '0':
-                console.log('\n👋 Terima kasih telah menggunakan CryoMedics Admin Panel!\n');
+                console.log('\n👋 Terima kasih telah menggunakan CryoMedics!\n');
                 rl.close();
                 process.exit(0);
                 break;
@@ -363,9 +411,10 @@ function showMenu() {
 console.log('');
 console.log('╔══════════════════════════════════════════════════════════╗');
 console.log('║                                                          ║');
-console.log('║   💻 CryoMedics - Admin Client                          ║');
+console.log(`║   💻 CryoMedics - User Client (${userName.padEnd(23)} ║`);
 console.log('║   Connecting to server...                                ║');
 console.log('║                                                          ║');
 console.log('╚══════════════════════════════════════════════════════════╝');
 
+startWatchingAlerts();
 showMenu();

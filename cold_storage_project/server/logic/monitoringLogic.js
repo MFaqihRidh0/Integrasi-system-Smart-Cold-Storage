@@ -9,29 +9,26 @@
  * ============================================================
  */
 
-const store = require('../state/inMemoryStore');
+const store = require('../state/dbStore');
 const alertLogic = require('./alertLogic');
 
 const monitoringLogic = {
 
     /**
      * Memproses satu reading telemetry dari sensor
-     * Melakukan update status storage dan pengecekan anomali
-     * @param {Object} reading - TelemetryReading dari sensor
-     * @returns {Object|null} Alert jika terdeteksi anomali
      */
-    processTelemetryReading(reading) {
+    async processTelemetryReading(reading) {
         const { storage_id, temperature, humidity, pressure, timestamp, sensor_id } = reading;
 
         // Pastikan storage ada
-        let storage = store.getStorage(storage_id);
+        let storage = await store.getStorage(storage_id);
         if (!storage) {
             console.warn(`[MonitoringLogic] ⚠️ Unknown storage_id: ${storage_id}, skipping...`);
             return null;
         }
 
         // Simpan reading ke history
-        store.addTelemetryReading(storage_id, {
+        await store.addTelemetryReading(storage_id, {
             temperature,
             humidity,
             pressure,
@@ -40,7 +37,7 @@ const monitoringLogic = {
         });
 
         // Tentukan status berdasarkan batch requirements
-        const batches = store.getBatchesByStorage(storage_id);
+        const batches = await store.getBatchesByStorage(storage_id);
         let newStatus = 'NORMAL';
         let anomalyAlert = null;
 
@@ -49,12 +46,12 @@ const monitoringLogic = {
             for (const batch of batches) {
                 if (temperature < batch.min_temp - 5 || temperature > batch.max_temp + 5) {
                     newStatus = 'CRITICAL';
-                    anomalyAlert = alertLogic.checkTemperatureAnomaly(storage_id, temperature, batch);
+                    anomalyAlert = await alertLogic.checkTemperatureAnomaly(storage_id, temperature, batch);
                     break;
                 } else if (temperature < batch.min_temp || temperature > batch.max_temp) {
                     newStatus = 'WARNING';
                     if (!anomalyAlert) {
-                        anomalyAlert = alertLogic.checkTemperatureAnomaly(storage_id, temperature, batch);
+                        anomalyAlert = await alertLogic.checkTemperatureAnomaly(storage_id, temperature, batch);
                     }
                 }
             }
@@ -62,14 +59,18 @@ const monitoringLogic = {
             // Tanpa batch, gunakan range standar
             if (temperature > 8 || temperature < -80) {
                 newStatus = 'CRITICAL';
+                anomalyAlert = await alertLogic.checkGlobalTemperatureAnomaly(storage_id, temperature);
             } else if (temperature > 5 || temperature < -75) {
                 newStatus = 'WARNING';
+                if (!anomalyAlert) {
+                    anomalyAlert = await alertLogic.checkGlobalTemperatureAnomaly(storage_id, temperature);
+                }
             }
         }
 
         // Cek humidity anomaly
         if (humidity > 80) {
-            const humidityAlert = alertLogic.checkHumidityAnomaly(storage_id, humidity);
+            const humidityAlert = await alertLogic.checkHumidityAnomaly(storage_id, humidity);
             if (humidityAlert) {
                 anomalyAlert = humidityAlert;
             }
@@ -79,21 +80,15 @@ const monitoringLogic = {
         }
 
         // Update status storage
-        store.updateStorageStatus(storage_id, temperature, humidity, newStatus);
+        await store.updateStorageStatus(storage_id, temperature, humidity, newStatus);
 
         return anomalyAlert;
     },
 
     /**
      * Membuat summary dari sesi streaming telemetry
-     * @param {string} storageId - ID storage
-     * @param {Array} readings - Semua reading dari sesi streaming
-     * @param {string} sessionStart - Waktu mulai sesi
-     * @param {string} sessionEnd - Waktu akhir sesi
-     * @param {number} anomalyCount - Jumlah anomali terdeteksi
-     * @returns {Object} TelemetrySummary
      */
-    createTelemetrySummary(storageId, readings, sessionStart, sessionEnd, anomalyCount) {
+    async createTelemetrySummary(storageId, readings, sessionStart, sessionEnd, anomalyCount) {
         if (readings.length === 0) {
             return {
                 storage_id: storageId,
@@ -118,7 +113,8 @@ const monitoringLogic = {
         const avgHumidity = humidities.reduce((a, b) => a + b, 0) / humidities.length;
 
         // Cek apakah ada critical alert
-        const hasCritical = store.getAlerts(storageId).some(a =>
+        const alerts = await store.getAlerts(storageId);
+        const hasCritical = alerts.some(a =>
             a.severity === 2 && !a.resolved &&
             a.triggered_at >= new Date(sessionStart).getTime()
         );
@@ -139,10 +135,10 @@ const monitoringLogic = {
 
     /**
      * Mengambil status semua storage yang terdaftar
-     * @returns {Object} AllStorageStatus
      */
-    getAllStorageStatus() {
-        const storages = store.getAllStorages().map(s => ({
+    async getAllStorageStatus() {
+        const storagesRaw = await store.getAllStorages();
+        const storages = storagesRaw.map(s => ({
             storage_id: s.storage_id,
             current_temp: s.current_temp,
             current_humidity: s.current_humidity,
@@ -156,14 +152,9 @@ const monitoringLogic = {
 
     /**
      * Mengambil riwayat telemetry dari storage tertentu
-     * @param {string} storageId - ID storage
-     * @param {number} startTime - Timestamp awal (epoch ms)
-     * @param {number} endTime - Timestamp akhir (epoch ms)
-     * @param {number} limit - Jumlah maksimal data
-     * @returns {Object} StorageHistory
      */
-    getStorageHistory(storageId, startTime, endTime, limit) {
-        const readings = store.getTelemetryHistory(storageId, startTime, endTime, limit);
+    async getStorageHistory(storageId, startTime, endTime, limit) {
+        const readings = await store.getTelemetryHistory(storageId, startTime, endTime, limit);
 
         return {
             storage_id: storageId,

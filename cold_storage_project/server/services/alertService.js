@@ -10,7 +10,7 @@
  */
 
 const alertLogic = require('../logic/alertLogic');
-const store = require('../state/inMemoryStore');
+const store = require('../state/dbStore');
 const { v4: uuidv4 } = require('uuid');
 
 const alertServiceHandlers = {
@@ -19,13 +19,13 @@ const alertServiceHandlers = {
      * GetAlerts - Mengambil daftar alert berdasarkan filter
      * RPC Type: Unary
      */
-    GetAlerts(call, callback) {
+    async GetAlerts(call, callback) {
         const { storage_id, severity, resolved_only } = call.request;
 
         console.log(`\n[AlertService] 🔔 GetAlerts request → storage: '${storage_id || 'ALL'}' | severity: ${severity} | resolved_only: ${resolved_only}`);
 
         try {
-            const result = alertLogic.getAlerts(storage_id, severity, resolved_only);
+            const result = await alertLogic.getAlerts(storage_id, severity, resolved_only);
             console.log(`[AlertService] → Returning ${result.alerts.length} alerts`);
             callback(null, result);
         } catch (error) {
@@ -41,13 +41,13 @@ const alertServiceHandlers = {
      * ResolveAlert - Menyelesaikan alert tertentu
      * RPC Type: Unary
      */
-    ResolveAlert(call, callback) {
+    async ResolveAlert(call, callback) {
         const { alert_id, resolved_by, resolution_notes } = call.request;
 
         console.log(`\n[AlertService] ✅ ResolveAlert request → alert: '${alert_id}' | by: '${resolved_by}'`);
 
         try {
-            const result = alertLogic.resolveAlert(alert_id, resolved_by, resolution_notes);
+            const result = await alertLogic.resolveAlert(alert_id, resolved_by, resolution_notes);
             callback(null, result);
         } catch (error) {
             console.error('[AlertService] ❌ ResolveAlert error:', error.message);
@@ -61,10 +61,6 @@ const alertServiceHandlers = {
     /**
      * WatchAlerts - Stream notifikasi alert secara real-time
      * RPC Type: Server-side Streaming
-     * 
-     * Client mendaftarkan diri sebagai watcher.
-     * Server akan mengirim notifikasi setiap kali ada alert baru
-     * yang sesuai dengan filter severity minimum.
      */
     WatchAlerts(call) {
         const { min_severity } = call.request;

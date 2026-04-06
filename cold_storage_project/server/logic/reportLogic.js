@@ -9,32 +9,31 @@
  * ============================================================
  */
 
-const store = require('../state/inMemoryStore');
+const store = require('../state/dbStore');
 
 const reportLogic = {
 
     /**
      * Generate laporan harian untuk storage tertentu atau semua storage
-     * @param {string} date - Tanggal laporan (YYYY-MM-DD)
-     * @param {string} storageId - ID storage (kosong = semua)
-     * @returns {Object} DailyReport
      */
-    generateDailyReport(date, storageId) {
+    async generateDailyReport(date, storageId) {
         const reportDate = date || new Date().toISOString().split('T')[0];
         const dayStart = new Date(reportDate).getTime();
         const dayEnd = dayStart + 24 * 60 * 60 * 1000;
 
         let storages = [];
         if (storageId && storageId !== '') {
-            const s = store.getStorage(storageId);
+            const s = await store.getStorage(storageId);
             if (s) storages.push(s);
         } else {
-            storages = store.getAllStorages();
+            storages = await store.getAllStorages();
         }
 
-        const storageSummaries = storages.map(s => {
-            const readings = store.getTelemetryHistory(s.storage_id, dayStart, dayEnd, 0);
-            const alerts = store.getAlerts(s.storage_id).filter(a =>
+        const storageSummaries = [];
+        for (const s of storages) {
+            const readings = await store.getTelemetryHistory(s.storage_id, dayStart, dayEnd, 0);
+            const alertsAll = await store.getAlerts(s.storage_id);
+            const alerts = alertsAll.filter(a =>
                 a.triggered_at >= dayStart && a.triggered_at <= dayEnd
             );
 
@@ -48,7 +47,7 @@ const reportLogic = {
             }
 
             // Cek compliance: apakah rata-rata suhu dalam range yang diizinkan batch
-            const batches = store.getBatchesByStorage(s.storage_id);
+            const batches = await store.getBatchesByStorage(s.storage_id);
             let withinCompliance = true;
             if (batches.length > 0 && readings.length > 0) {
                 for (const batch of batches) {
@@ -68,7 +67,7 @@ const reportLogic = {
                 ? (normalReadings.length / readings.length) * 100 
                 : 100;
 
-            return {
+            storageSummaries.push({
                 storage_id: s.storage_id,
                 avg_temp: Math.round(avgTemp * 100) / 100,
                 min_temp: Math.round(minTemp * 100) / 100,
@@ -77,11 +76,12 @@ const reportLogic = {
                 alert_count: alerts.length,
                 uptime_percentage: Math.round(uptimePerc * 100) / 100,
                 within_compliance: withinCompliance
-            };
-        });
+            });
+        }
 
         // Hitung total alert
-        const allAlerts = store.getAlerts('', null, false).filter(a =>
+        const allAlertsRaw = await store.getAlerts('', null, false);
+        const allAlerts = allAlertsRaw.filter(a =>
             a.triggered_at >= dayStart && a.triggered_at <= dayEnd
         );
         const criticalAlerts = allAlerts.filter(a => a.severity === 2);
@@ -106,15 +106,10 @@ const reportLogic = {
     },
 
     /**
-     * Export data telemetry ke format CSV
-     * @param {string} storageId - ID storage
-     * @param {number} startTime - Timestamp awal
-     * @param {number} endTime - Timestamp akhir
-     * @param {string} format - Format export (CSV/JSON)
-     * @returns {Object} ExportResponse
+     * Export data telemetry ke format CSV/JSON
      */
-    exportCSV(storageId, startTime, endTime, format) {
-        const readings = store.getTelemetryHistory(
+    async exportCSV(storageId, startTime, endTime, format) {
+        const readings = await store.getTelemetryHistory(
             storageId, 
             startTime || 0, 
             endTime || Date.now(), 
@@ -130,26 +125,37 @@ const reportLogic = {
             };
         }
 
-        // Simulasi export - karena in-memory, kita hitung estimasi ukuran file
-        let estimatedSize = 0;
-        if (format === 'CSV') {
-            // Header + data rows
-            const headerSize = 'timestamp,temperature,humidity,pressure,sensor_id\n'.length;
-            const rowSize = readings.reduce((sum, r) => {
-                return sum + `${r.timestamp},${r.temperature},${r.humidity},${r.pressure || 0},${r.sensor_id || ''}\n`.length;
-            }, 0);
-            estimatedSize = headerSize + rowSize;
-        } else {
-            estimatedSize = JSON.stringify(readings).length;
+        const fs = require('fs');
+        const path = require('path');
+        const exportsDir = path.join(__dirname, '..', '..', 'exports');
+
+        if (!fs.existsSync(exportsDir)) {
+            fs.mkdirSync(exportsDir, { recursive: true });
         }
 
         const exportId = `export_${storageId}_${Date.now()}`;
+        const fileName = `${exportId}.${(format || 'csv').toLowerCase()}`;
+        const filePath = path.join(exportsDir, fileName);
+
+        let fileContent = '';
+        if (format === 'CSV') {
+            // Header + data rows
+            const header = 'timestamp,temperature,humidity,pressure,sensor_id\n';
+            const rows = readings.map(r => `${r.timestamp},${r.temperature},${r.humidity},${r.pressure || 0},${r.sensor_id || ''}`).join('\n');
+            fileContent = header + rows;
+        } else {
+            fileContent = JSON.stringify(readings, null, 2);
+        }
+
+        fs.writeFileSync(filePath, fileContent);
+        const estimatedSize = fileContent.length;
 
         console.log(`[ReportLogic] 📁 Export ${format} → Storage '${storageId}' | ${readings.length} records | ~${estimatedSize} bytes`);
+        console.log(`[ReportLogic] 📁 File saved successfully at ${filePath}`);
 
         return {
             success: true,
-            download_url: `/exports/${exportId}.${(format || 'csv').toLowerCase()}`,
+            download_url: filePath,
             file_size_bytes: estimatedSize,
             record_count: readings.length
         };
@@ -157,22 +163,20 @@ const reportLogic = {
 
     /**
      * Mengecek status kepatuhan (compliance) suhu seluruh sistem
-     * @param {string} periodStart - Tanggal mulai (YYYY-MM-DD)
-     * @param {string} periodEnd - Tanggal akhir (YYYY-MM-DD)
-     * @returns {Object} ComplianceReport
      */
-    getComplianceStatus(periodStart, periodEnd) {
+    async getComplianceStatus(periodStart, periodEnd) {
         const startTime = periodStart ? new Date(periodStart).getTime() : Date.now() - (7 * 24 * 60 * 60 * 1000);
         const endTime = periodEnd ? new Date(periodEnd).getTime() : Date.now();
 
-        const allStorages = store.getAllStorages();
+        const allStorages = await store.getAllStorages();
         const storageCompliance = [];
         const recommendations = [];
 
         for (const storage of allStorages) {
-            const readings = store.getTelemetryHistory(storage.storage_id, startTime, endTime, 0);
-            const batches = store.getBatchesByStorage(storage.storage_id);
-            const alerts = store.getAlerts(storage.storage_id).filter(a =>
+            const readings = await store.getTelemetryHistory(storage.storage_id, startTime, endTime, 0);
+            const batches = await store.getBatchesByStorage(storage.storage_id);
+            const alertsAll = await store.getAlerts(storage.storage_id);
+            const alerts = alertsAll.filter(a =>
                 a.triggered_at >= startTime && a.triggered_at <= endTime
             );
 

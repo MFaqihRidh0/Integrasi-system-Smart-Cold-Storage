@@ -16,10 +16,6 @@ const monitoringServiceHandlers = {
     /**
      * StreamTelemetry - Menerima stream data sensor dari client
      * RPC Type: Client-side Streaming
-     * 
-     * Sensor mengirim data suhu secara terus-menerus,
-     * server mengumpulkan semua data dan mengembalikan summary
-     * saat client selesai streaming.
      */
     StreamTelemetry(call, callback) {
         const readings = [];
@@ -30,14 +26,18 @@ const monitoringServiceHandlers = {
         console.log(`\n[MonitoringService] 📡 StreamTelemetry session started at ${sessionStart}`);
 
         // Event: menerima data dari client
-        call.on('data', (telemetryReading) => {
+        call.on('data', async (telemetryReading) => {
             storageId = telemetryReading.storage_id;
             readings.push(telemetryReading);
 
-            // Proses setiap reading - cek anomali
-            const alert = monitoringLogic.processTelemetryReading(telemetryReading);
-            if (alert) {
-                anomalyCount++;
+            try {
+                // Proses setiap reading - cek anomali
+                const alert = await monitoringLogic.processTelemetryReading(telemetryReading);
+                if (alert) {
+                    anomalyCount++;
+                }
+            } catch (err) {
+                console.error('[MonitoringService] Error processing telemetry reading:', err.message);
             }
 
             // Log setiap 5 reading untuk tidak terlalu verbose
@@ -47,22 +47,27 @@ const monitoringServiceHandlers = {
         });
 
         // Event: client selesai streaming
-        call.on('end', () => {
+        call.on('end', async () => {
             const sessionEnd = new Date().toISOString();
 
-            // Buat summary dari seluruh sesi streaming
-            const summary = monitoringLogic.createTelemetrySummary(
-                storageId,
-                readings,
-                sessionStart,
-                sessionEnd,
-                anomalyCount
-            );
+            try {
+                // Buat summary dari seluruh sesi streaming
+                const summary = await monitoringLogic.createTelemetrySummary(
+                    storageId,
+                    readings,
+                    sessionStart,
+                    sessionEnd,
+                    anomalyCount
+                );
 
-            console.log(`[MonitoringService] ✅ StreamTelemetry session ended for '${storageId}'`);
-            console.log(`[MonitoringService]    Total packets: ${summary.total_packets_received} | Avg temp: ${summary.avg_temperature}°C | Anomalies: ${summary.anomaly_count}`);
+                console.log(`[MonitoringService] ✅ StreamTelemetry session ended for '${storageId}'`);
+                console.log(`[MonitoringService]    Total packets: ${summary.total_packets_received} | Avg temp: ${summary.avg_temperature}°C | Anomalies: ${summary.anomaly_count}`);
 
-            callback(null, summary);
+                callback(null, summary);
+            } catch (err) {
+                console.error('[MonitoringService] Error creating summary:', err.message);
+                callback({ code: 13, message: err.message });
+            }
         });
 
         // Event: error di stream
@@ -75,11 +80,11 @@ const monitoringServiceHandlers = {
      * GetAllStorageStatus - Mengambil status semua kulkas
      * RPC Type: Unary
      */
-    GetAllStorageStatus(call, callback) {
+    async GetAllStorageStatus(call, callback) {
         console.log(`\n[MonitoringService] 📊 GetAllStorageStatus request`);
 
         try {
-            const result = monitoringLogic.getAllStorageStatus();
+            const result = await monitoringLogic.getAllStorageStatus();
             console.log(`[MonitoringService] → Returning status for ${result.storages.length} storages`);
             callback(null, result);
         } catch (error) {
@@ -95,13 +100,13 @@ const monitoringServiceHandlers = {
      * GetStorageHistory - Mengambil riwayat telemetry
      * RPC Type: Unary
      */
-    GetStorageHistory(call, callback) {
+    async GetStorageHistory(call, callback) {
         const { storage_id, start_time, end_time, limit } = call.request;
 
         console.log(`\n[MonitoringService] 📜 GetStorageHistory request → storage: '${storage_id}' | limit: ${limit}`);
 
         try {
-            const result = monitoringLogic.getStorageHistory(storage_id, start_time, end_time, limit);
+            const result = await monitoringLogic.getStorageHistory(storage_id, start_time, end_time, limit);
             console.log(`[MonitoringService] → Returning ${result.readings.length} readings for '${storage_id}'`);
             callback(null, result);
         } catch (error) {

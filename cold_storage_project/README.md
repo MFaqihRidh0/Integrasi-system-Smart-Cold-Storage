@@ -86,40 +86,49 @@ cold_storage_project_backup/
 ## 🚀 Cara Menjalankan
 
 ### 1. Install Dependencies
+Sistem kita sekarang menggunakan `yarn`. Jalankan perintah berikut:
 ```bash
-cd cold_storage_project_backup
-npm install
+yarn install
 ```
 
-### 2. Jalankan Server
+### 2. Jalankan Database (PostgreSQL via Docker)
+Karena sistem kini memakai PostgreSQL, pastikan Anda menjalankan Docker Compose untuk mengangkat service database:
 ```bash
-npm run server
-# atau
-node server/server.js
+docker compose up -d
+```
+*(Catatan: Konfigurasi default mapping port dari container Docker diset ke `5433` lokal agar tidak konflik dengan server lokal).*
+
+### 3. Jalankan Server
+Server akan otomatis terhubung dengan database dan menjalankan migrasi schema awal (tabel `storages`, `batches`, `alerts`, `telemetry`).
+```bash
+yarn run server
 ```
 
-### 3. Jalankan Client
+### 4. Buka Client Baru untuk Simulasi (Buka Beberapa Terminal)
 
 **Terminal 2 - Sensor Client (Simulasi sensor kulkas):**
 ```bash
-npm run client:sensor
-# atau
-node client/sensor_client.js
+yarn run client:sensor
 ```
+*(Memulai client-side streaming pengiriman data suhu)*
 
-**Terminal 3 - Admin Client (CLI interaktif):**
+**Terminal 3 - Admin Client (Manajemen Inventaris & Laporan):**
 ```bash
-npm run client:admin
-# atau
-node client/admin_client.js
+yarn run client:admin
 ```
+*(Mendaftarkan vaksin, membaca inventaris, membuat laporan harian)*
 
-**Terminal 4 - Dashboard Client (Monitoring real-time):**
+**Terminal 4 - Multi-Client Operator (User 1 - Resolusi False Positive):**
 ```bash
-npm run client:dashboard
-# atau
-node client/dashboard_client.js
+yarn run client:user1
 ```
+*(Login sebagai Operator User_1 yang memantau notifikasi suhu real-time lewat Server-side streaming)*
+
+**Terminal 5 - Multi-Client Operator (User 2):**
+```bash
+yarn run client:user2
+```
+*(Coba Override/Resolve sebuah alert dari Terminal 4, notifikasinya akan otomatis dikirim (broadcasting) ke Terminal 5 !)*
 
 ## 🧊 Default Storage Units
 
@@ -134,11 +143,11 @@ node client/dashboard_client.js
 ```
 Sensor Client                          Server
     │                                    │
-    ├── TelemetryReading #1 ──────────►  │ processTelemetryReading()
-    ├── TelemetryReading #2 ──────────►  │ processTelemetryReading()
-    ├── TelemetryReading #3 ──────────►  │ processTelemetryReading()
+    ├── TelemetryReading #1 ──────────►  │ processTelemetryReading() (async Db)
+    ├── TelemetryReading #2 ──────────►  │ processTelemetryReading() (async Db)
+    ├── TelemetryReading #3 ──────────►  │ processTelemetryReading() (async Db)
     │   ...                              │   (cek anomali setiap reading)
-    ├── TelemetryReading #N ──────────►  │ processTelemetryReading()
+    ├── TelemetryReading #N ──────────►  │ processTelemetryReading() (async Db)
     │                                    │
     ├── END STREAM ────────────────────► │
     │                                    │ createTelemetrySummary()
@@ -146,7 +155,7 @@ Sensor Client                          Server
     │                                    │
 ```
 
-## 🛡️ Deteksi Anomali
+## Deteksi Anomali & Resolusi
 
 Sistem secara otomatis mendeteksi anomali berikut:
 
@@ -154,12 +163,33 @@ Sistem secara otomatis mendeteksi anomali berikut:
   - **WARNING**: Suhu melampaui batas batch
   - **CRITICAL**: Suhu melampaui batas +5°C dari threshold batch
 - **HUMIDITY_HIGH**: Kelembaban > 80%
-  - **WARNING**: Kelembaban 80-90%
-  - **CRITICAL**: Kelembaban > 90%
 
-## 📝 Teknologi
+Ketika alert muncul dan dianggap sebagai false-positive (misal kesalahan baca sensor), operator (User1/User2) dapat me-Resolve Alert beserta catatannya, dan perubahan status tersebut secara **Real-time broadcast** ke operator lainnya lewat gRPC Server Streaming.
 
-- **Node.js** - Runtime
+## Teknologi
+
+- **Node.js** - Runtime Backend
+- **PostgreSQL & DB Store** - Persistent Storage Database
+- **Docker Compose** - Database Containerization 
 - **gRPC** (@grpc/grpc-js) - Framework RPC
 - **Protocol Buffers** (@grpc/proto-loader) - Serialisasi data
-- **UUID** - Generate unique alert ID
+---
+
+## How to Run ?
+
+Pre-requisites:
+1. Docker
+2. Node.js
+3. Yarn
+
+Run this command first:
+
+yarn install
+
+Then run this command:
+
+1. docker compose up -d
+2. yarn run server
+3. yarn run client:user1
+4. yarn run client:user2
+5. yarn run client:sensor

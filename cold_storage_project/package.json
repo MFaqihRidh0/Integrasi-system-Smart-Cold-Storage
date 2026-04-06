@@ -6,13 +6,16 @@
   "scripts": {
     "server": "node server/server.js",
     "client:sensor": "node client/sensor_client.js",
-    "client:admin": "node client/admin_client.js",
+    "client:user1": "node client/user_client.js User_1",
+    "client:user2": "node client/user_client.js User_2",
     "client:dashboard": "node client/dashboard_client.js",
     "demo": "node server/server.js & sleep 2 && node client/sensor_client.js"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.9.0",
     "@grpc/proto-loader": "^0.7.0",
+    "dotenv": "^17.4.1",
+    "pg": "^8.20.0",
     "uuid": "^9.0.0"
   },
   "keywords": [
