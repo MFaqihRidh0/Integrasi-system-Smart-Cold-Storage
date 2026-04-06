@@ -1,4 +1,4 @@
-# Snart Cold Storage — Project Brief & Implementation Guide
+# Smart Cold Storage — Project Brief & Implementation Guide
 
 > **Versi dokumen:** 1.0 · 31 Maret 2026
 > Sistem pemantauan cold storage medis berbasis **gRPC Node.js**
