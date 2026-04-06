@@ -1,420 +1,403 @@
 /**
  * ============================================================
- *  💻 CryoMedics - Admin Client (Laptop)
- * ============================================================
- *  Client untuk admin yang mengelola inventaris, resolve alert,
- *  dan generate laporan via CLI.
- *
- *  Fitur:
- *  1. Register stok baru ke kulkas
- *  2. Lihat inventaris kulkas
- *  3. Hapus batch dari kulkas
- *  4. Lihat semua alert
- *  5. Resolve alert
- *  6. Generate daily report
- *  7. Export data CSV
- *  8. Cek compliance status
+ *  💻 CryoMedics - Admin Client (TUI Dashboard)
  * ============================================================
  */
 
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
-const readline = require('readline');
+const blessed = require('blessed');
+const contrib = require('blessed-contrib');
+const { v4: uuidv4 } = require('uuid');
 
 // ===================== LOAD PROTO =====================
 
 const PROTO_PATH = path.join(__dirname, '..', 'proto', 'medicold.proto');
-
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
-    keepCase: true,
-    longs: Number,
-    enums: Number,
-    defaults: true,
-    oneofs: true
+    keepCase: true, longs: Number, enums: Number, defaults: true, oneofs: true
 });
-
 const medicoldProto = grpc.loadPackageDefinition(packageDefinition).medicold;
 
 // ===================== CLIENT SETUP =====================
 
 const SERVER_ADDRESS = 'localhost:50051';
+const storageClient = new medicoldProto.StorageService(SERVER_ADDRESS, grpc.credentials.createInsecure());
+const monitoringClient = new medicoldProto.MonitoringService(SERVER_ADDRESS, grpc.credentials.createInsecure());
+const alertClient = new medicoldProto.AlertService(SERVER_ADDRESS, grpc.credentials.createInsecure());
+const reportClient = new medicoldProto.ReportService(SERVER_ADDRESS, grpc.credentials.createInsecure());
 
-const storageClient = new medicoldProto.StorageService(
-    SERVER_ADDRESS, grpc.credentials.createInsecure()
-);
-const monitoringClient = new medicoldProto.MonitoringService(
-    SERVER_ADDRESS, grpc.credentials.createInsecure()
-);
-const alertClient = new medicoldProto.AlertService(
-    SERVER_ADDRESS, grpc.credentials.createInsecure()
-);
-const reportClient = new medicoldProto.ReportService(
-    SERVER_ADDRESS, grpc.credentials.createInsecure()
-);
+// ===================== USER STATE =====================
 
-// ===================== READLINE INTERFACE =====================
-
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
+const MOCK_USERS = {
+    'USR-001': { name: 'Dr. Andi', role: 'Head Pharmacist', department: 'Pharmacy' },
+    'USR-002': { name: 'Suster Rina', role: 'Inventory Admin', department: 'Storage Room' },
+    'USR-003': { name: 'Budi', role: 'Maintenance', department: 'Engineering' }
+};
 
 const userName = process.argv[2] || `User_${Math.floor(Math.random() * 100)}`;
+const currentUserId = uuidv4();
+MOCK_USERS[currentUserId.toUpperCase()] = {
+    name: userName,
+    role: userName === 'User_1' ? 'System Administrator' : 'Storage Operator',
+    department: 'Central Control'
+};
+
+// ===================== UI SETUP =====================
+
+const screen = blessed.screen({ smartCSR: true, title: 'CryoMedics User Console' });
+// Enable key and mouse events globally to allow scrolling
+screen.key(['tab'], function() { screen.focusNext(); });
+const grid = new contrib.grid({ rows: 12, cols: 12, screen: screen });
+
+// 1. Overview (Kiri Atas)
+const overviewBox = grid.set(0, 0, 3, 8, blessed.box, {
+    label: ' System Overview ',
+    content: ` Loading system info...`,
+    style: { fg: 'cyan', border: { fg: 'cyan' } }
+});
+
+// 2. Output Console (Kiri Tengah)
+const outputConsole = grid.set(3, 0, 6, 8, contrib.log, {
+    label: ' Action Output (Use Mouse Wheel to Scroll) ',
+    fg: 'green',
+    selectedFg: 'green',
+    mouse: true,
+    keys: true,
+    vi: true,
+    scrollable: true,
+    alwaysScroll: true,
+    scrollbar: { ch: '█', track: { bg: 'black' }, style: { fg: 'cyan' } }
+});
+
+// 3. Menu List (Kiri Bawah)
+const menuList = grid.set(9, 0, 3, 8, blessed.list, {
+    label: ' Main Menu (Use ↑/↓ and Enter) ',
+    keys: true,
+    interactive: true,
+    style: {
+        fg: 'white',
+        selected: { bg: 'blue', fg: 'white', bold: true }
+    },
+    mouse: true,
+    items: [
+        '[1] Register Stok Baru',
+        '[2] Lihat Inventaris',
+        '[3] Hapus Batch',
+        '[4] Lihat Semua Alert',
+        '[5] Resolve Alert',
+        '[6] Generate Daily Report',
+        '[7] Export Data (CSV)',
+        '[8] Cek Compliance Status',
+        '[9] Cek Info User',
+        '[0] Exit'
+    ]
+});
+
+// 4. Live Alerts (Kanan Full)
+const alertBoard = grid.set(0, 8, 12, 4, contrib.log, {
+    label: ' Live Alert Board (Scrollable) ',
+    fg: 'red',
+    selectedFg: 'red',
+    mouse: true,
+    keys: true,
+    scrollable: true,
+    alwaysScroll: true,
+    scrollbar: { ch: '█', track: { bg: 'black' }, style: { fg: 'red' } }
+});
+
+// Prompt Dialog (Hidden by Default)
+const promptDialog = blessed.prompt({
+    parent: screen,
+    border: 'line',
+    height: 'shrink',
+    width: 'half',
+    top: 'center',
+    left: 'center',
+    label: ' Input Required ',
+    tags: true,
+    keys: true,
+    vi: true,
+    hidden: true
+});
+
+// Message Dialog (Hidden by Default)
+const msgDialog = blessed.message({
+    parent: screen,
+    border: 'line',
+    height: 'shrink',
+    width: 'half',
+    top: 'center',
+    left: 'center',
+    label: ' System Message ',
+    tags: true,
+    keys: true,
+    hidden: true
+});
+
+function ask(question) {
+    return new Promise(resolve => {
+        promptDialog.show();
+        promptDialog.input(`{cyan-fg}${question}{/cyan-fg}`, '', (err, value) => {
+            promptDialog.hide();
+            screen.render();
+            resolve(value || '');
+        });
+    });
+}
+
+function printOutput(text) {
+    outputConsole.log(text);
+    screen.render();
+}
 
 // ===================== WATCH ALERTS =====================
+
 function startWatchingAlerts() {
-    const call = alertClient.WatchAlerts({ min_severity: 0 }); // Terima semua alert
+    const metadata = new grpc.Metadata();
+    metadata.add('user-id', currentUserId);
+    
+    const call = alertClient.WatchAlerts({ min_severity: 0 }, metadata);
 
     call.on('data', (response) => {
         const alert = response.alert;
         const type = response.notification_type;
 
-        // Skip initial connection message from logging as popup
         if (type === 'CONNECTED') {
+            alertBoard.log(`[SYS] ${alert.message}`);
+            screen.render();
             return;
         }
 
-        console.log('\n\n======================================================');
-        if (type === 'NEW_ALERT') {
-            console.log(`🚨 [BROADCAST] NEW ALERT DETECTED! 🚨`);
-        } else if (type === 'ALERT_RESOLVED') {
-            const byMe = alert.resolved_by === userName;
-            console.log(`✅ [BROADCAST] ALERT RESOLVED by ${alert.resolved_by}${byMe ? ' (You)' : ''}`);
-        }
+        const severityLabels = ['INFO', 'WARN', 'CRIT'];
+        const time = new Date(alert.triggered_at).toLocaleTimeString();
+        let prefix = type === 'ALERT_RESOLVED' ? '[RESOLVED]' : `[${severityLabels[alert.severity]}]`;
         
-        const severityLabels = ['INFO', 'WARNING', 'CRITICAL'];
-        console.log(`- Alert ID: ${alert.alert_id}`);
-        console.log(`- Storage: ${alert.storage_id}`);
-        console.log(`- Severity: ${severityLabels[alert.severity]}`);
-        console.log(`- Message: ${alert.message}`);
-        console.log(`- Value: ${Math.round(alert.value*100)/100} / Threshold: ${Math.round(alert.threshold*100)/100}`);
-        if(alert.resolved) {
-            console.log(`- 📌 Status: RESOLVED by ${alert.resolved_by} (Notes: ${alert.resolution_notes})`);
-        } else {
-            console.log(`- 📌 Status: ACTIVE`);
-        }
-        console.log('======================================================\n');
+        alertBoard.log(`${time} ${prefix}`);
+        alertBoard.log(` > ${alert.storage_id}: ${alert.message}`);
         
-        // Render menu again to prevent broken CLI
-        rl.prompt(true);
+        if (type === 'ALERT_RESOLVED') {
+            alertBoard.log(`   (by ${alert.resolved_by})`);
+        }
+        screen.render();
     });
 
     call.on('error', (error) => {
-        if (error.code !== 1) { // Not Cancelled
-            console.error('\n❌ WatchAlerts Stream Error:', error.message);
-        }
+        if (error.code !== 1) alertBoard.log('[ERR] Alert Stream Disconnected');
     });
-}
-
-function ask(question) {
-    return new Promise(resolve => rl.question(question, resolve));
 }
 
 // ===================== ADMIN FUNCTIONS =====================
 
-/**
- * 1. Register stok baru
- */
 async function registerStock() {
-    console.log('\n--- 📦 Register Stock Baru ---');
-
-    const batch_id = await ask('Batch ID: ');
-    const storage_id = await ask('Storage ID (e.g. FRIDGE-001): ');
-    const content_type = await ask('Jenis obat/vaksin: ');
-    const quantity = parseInt(await ask('Quantity: '));
-    const expiry_date = await ask('Expiry date (YYYY-MM-DD): ');
-    const notes = await ask('Catatan: ');
-    const min_temp = parseFloat(await ask('Min temperature (°C): '));
-    const max_temp = parseFloat(await ask('Max temperature (°C): '));
+    printOutput('--- REGISTER STOCK ---');
+    const batch_id = await ask('Batch ID:');
+    if(!batch_id) return printOutput('Cancelled.');
+    const storage_id = await ask('Storage ID (e.g. FRIDGE-001):');
+    const content_type = await ask('Jenis obat/vaksin:');
+    const quantity = parseInt(await ask('Quantity:') || 0);
+    const expiry_date = await ask('Expiry date (YYYY-MM-DD):');
+    const notes = await ask('Catatan:');
+    const min_temp = parseFloat(await ask('Min temp (°C):') || 0);
+    const max_temp = parseFloat(await ask('Max temp (°C):') || 0);
 
     storageClient.RegisterStock({
         batch_id, storage_id, content_type, quantity,
         expiry_date, notes, min_temp, max_temp
     }, (error, response) => {
-        if (error) {
-            console.error('❌ Error:', error.message);
-        } else {
-            console.log(`\n${response.success ? '✅' : '❌'} ${response.message}`);
-        }
-        showMenu();
+        if (error) printOutput(`[Error] ${error.message}`);
+        else printOutput(`[Success] ${response.message}`);
     });
 }
 
-/**
- * 2. Lihat inventaris
- */
 async function getInventory() {
-    console.log('\n--- 📋 Lihat Inventaris ---');
-
-    const storage_id = await ask('Storage ID (e.g. FRIDGE-001): ');
+    printOutput('--- LIHAT INVENTARIS ---');
+    const storage_id = await ask('Storage ID (e.g. FRIDGE-001):');
+    if(!storage_id) return printOutput('Cancelled.');
 
     storageClient.GetInventory({ storage_id }, (error, response) => {
         if (error) {
-            console.error('❌ Error:', error.message);
+            printOutput(`[Error] ${error.message}`);
         } else {
-            console.log(`\n📋 Inventaris Storage '${response.storage_id}':`);
-            console.log(`   Last Updated: ${new Date(response.last_updated).toLocaleString()}`);
-
-            if (response.batches.length === 0) {
-                console.log('   (Kosong - tidak ada batch)');
-            } else {
+            printOutput(`Inventory '${response.storage_id}':`);
+            if (response.batches.length === 0) printOutput('  (Kosong)');
+            else {
                 response.batches.forEach((b, i) => {
-                    console.log(`\n   [${i + 1}] Batch ID    : ${b.batch_id}`);
-                    console.log(`       Content Type : ${b.content_type}`);
-                    console.log(`       Quantity     : ${b.quantity}`);
-                    console.log(`       Expiry       : ${b.expiry_date}`);
-                    console.log(`       Temp Range   : ${b.min_temp}°C ~ ${b.max_temp}°C`);
-                    console.log(`       Notes        : ${b.notes}`);
+                    printOutput(`  [${i + 1}] ${b.batch_id} - ${b.content_type}`);
+                    printOutput(`      ├─ Qty    : ${b.quantity}`);
+                    printOutput(`      ├─ Expiry : ${b.expiry_date || 'N/A'}`);
+                    printOutput(`      ├─ Target : ${b.min_temp}°C to ${b.max_temp}°C`);
+                    printOutput(`      └─ Notes  : ${b.notes || '-'}`);
                 });
             }
         }
-        showMenu();
     });
 }
 
-/**
- * 3. Hapus batch
- */
 async function removeBatch() {
-    console.log('\n--- 🗑️  Hapus Batch ---');
-
-    const batch_id = await ask('Batch ID yang akan dihapus: ');
-    const reason = await ask('Alasan penghapusan: ');
+    printOutput('--- HAPUS BATCH ---');
+    const batch_id = await ask('Batch ID yang dihapus:');
+    if(!batch_id) return printOutput('Cancelled.');
+    const reason = await ask('Alasan penghapusan:');
 
     storageClient.RemoveBatch({ batch_id, reason }, (error, response) => {
-        if (error) {
-            console.error('❌ Error:', error.message);
-        } else {
-            console.log(`\n${response.success ? '✅' : '❌'} ${response.message}`);
-        }
-        showMenu();
+        if (error) printOutput(`[Error] ${error.message}`);
+        else printOutput(`[Success] ${response.message}`);
     });
 }
 
-/**
- * 4. Lihat semua alert
- */
 async function getAlerts() {
-    console.log('\n--- 🔔 Daftar Alert ---');
+    printOutput('--- DAFTAR ALERT AKTIF ---');
+    const storage_id = await ask('Storage ID (kosong=Semua):');
 
-    const storage_id = await ask('Storage ID (kosongkan untuk semua): ');
-
-    alertClient.GetAlerts({
-        storage_id: storage_id || '',
-        severity: 0,
-        resolved_only: false
-    }, (error, response) => {
+    alertClient.GetAlerts({ storage_id: storage_id || '', severity: 0, resolved_only: false }, (error, response) => {
         if (error) {
-            console.error('❌ Error:', error.message);
+            printOutput(`[Error] ${error.message}`);
         } else {
-            const severityLabels = ['INFO', 'WARNING', 'CRITICAL'];
-            const typeLabels = ['TEMP_OUT_OF_RANGE', 'HUMIDITY_HIGH', 'SENSOR_DISCONNECTED', 'DOOR_OPEN_TOO_LONG', 'POWER_FAILURE'];
-
-            console.log(`\n🔔 Total Alerts: ${response.alerts.length}`);
-
-            if (response.alerts.length === 0) {
-                console.log('   ✅ Tidak ada alert aktif');
-            } else {
-                response.alerts.forEach((alert, i) => {
-                    const icon = alert.severity === 2 ? '🔴' : alert.severity === 1 ? '🟡' : '🔵';
-                    console.log(`\n   ${icon} [${i + 1}] Alert ID  : ${alert.alert_id}`);
-                    console.log(`       Storage    : ${alert.storage_id}`);
-                    console.log(`       Type       : ${typeLabels[alert.type] || alert.type}`);
-                    console.log(`       Severity   : ${severityLabels[alert.severity] || alert.severity}`);
-                    console.log(`       Message    : ${alert.message}`);
-                    console.log(`       Value      : ${alert.value} | Threshold: ${alert.threshold}`);
-                    console.log(`       Triggered  : ${new Date(alert.triggered_at).toLocaleString()}`);
-                    console.log(`       Resolved   : ${alert.resolved ? `✅ by ${alert.resolved_by}` : '❌ Belum'}`);
-                });
-            }
+            printOutput(`Total Alerts: ${response.alerts.length}`);
+            response.alerts.forEach((alert, i) => {
+                const icon = alert.severity === 2 ? '[CRIT]' : alert.severity === 1 ? '[WARN]' : '[INFO]';
+                printOutput(` ${icon} ID: ${alert.alert_id} | ${alert.storage_id}`);
+                printOutput(`    Msg: ${alert.message}`);
+            });
         }
-        showMenu();
     });
 }
 
-/**
- * 5. Resolve alert
- */
 async function resolveAlert() {
-    console.log('\n--- ✅ Resolve Alert ---');
-
-    const alert_id = await ask('Alert ID: ');
-    // Resolve otomatis menggunakan nama User yang login (terminal)
-    const resolved_by = userName; 
-    const resolution_notes = await ask('Catatan resolusi: ');
+    printOutput('--- RESOLVE ALERT ---');
+    const alert_id = await ask('Alert ID:');
+    if(!alert_id) return printOutput('Cancelled.');
+    const resolution_notes = await ask('Catatan resolusi:');
 
     alertClient.ResolveAlert({
-        alert_id, resolved_by, resolution_notes
+        alert_id, resolved_by: userName, resolution_notes
     }, (error, response) => {
-        if (error) {
-            console.error('❌ Error:', error.message);
-        } else {
-            console.log(`\n${response.success ? '✅' : '❌'} ${response.message}`);
-        }
-        showMenu();
+        if (error) printOutput(`[Error] ${error.message}`);
+        else printOutput(`[Success] ${response.message}`);
     });
 }
 
-/**
- * 6. Generate daily report
- */
 async function generateDailyReport() {
-    console.log('\n--- 📊 Generate Daily Report ---');
-
-    const date = await ask('Tanggal (YYYY-MM-DD, kosongkan untuk hari ini): ');
-    const storage_id = await ask('Storage ID (kosongkan untuk semua): ');
+    printOutput('--- DAILY REPORT ---');
+    const date = await ask('Tanggal (YYYY-MM-DD):');
+    const storage_id = await ask('Storage ID (kosong=Semua):');
 
     reportClient.GenerateDailyReport({
         date: date || new Date().toISOString().split('T')[0],
         storage_id: storage_id || ''
     }, (error, response) => {
-        if (error) {
-            console.error('❌ Error:', error.message);
-        } else {
-            console.log(`\n📊 DAILY REPORT - ${response.report_date}`);
-            console.log(`   Generated at: ${response.generated_at}`);
-            console.log(`   Total Alerts: ${response.total_alerts} | Critical: ${response.critical_alerts}`);
-            console.log(`   System Uptime: ${response.system_uptime_percentage}%`);
-
+        if (error) printOutput(`[Error] ${error.message}`);
+        else {
+            printOutput(`Report Date: ${response.report_date}`);
+            printOutput(`Total Alerts: ${response.total_alerts} | Uptime: ${response.system_uptime_percentage}%`);
             response.storage_summaries.forEach(s => {
-                console.log(`\n   📦 Storage: ${s.storage_id}`);
-                console.log(`      Avg Temp     : ${s.avg_temp}°C`);
-                console.log(`      Temp Range   : ${s.min_temp}°C ~ ${s.max_temp}°C`);
-                console.log(`      Readings     : ${s.total_readings}`);
-                console.log(`      Alerts       : ${s.alert_count}`);
-                console.log(`      Uptime       : ${s.uptime_percentage}%`);
-                console.log(`      Compliance   : ${s.within_compliance ? '✅ OK' : '⚠️ VIOLATION'}`);
+                printOutput(` [${s.storage_id}] Avg Temp: ${s.avg_temp}°C | Reading: ${s.total_readings}`);
             });
         }
-        showMenu();
     });
 }
 
-/**
- * 7. Export CSV
- */
 async function exportCSV() {
-    console.log('\n--- 📁 Export Data ---');
-
-    const storage_id = await ask('Storage ID: ');
-    const format = await ask('Format (CSV/JSON): ');
+    printOutput('--- EXPORT DATA ---');
+    const storage_id = await ask('Storage ID:');
+    if(!storage_id) return printOutput('Cancelled.');
 
     reportClient.ExportCSV({
-        storage_id,
-        start_time: 0,
-        end_time: Date.now(),
-        format: format || 'CSV'
+        storage_id, start_time: 0, end_time: Date.now(), format: 'CSV'
     }, (error, response) => {
-        if (error) {
-            console.error('❌ Error:', error.message);
-        } else {
-            if (response.success) {
-                console.log(`\n✅ Export berhasil!`);
-                console.log(`   Download URL : ${response.download_url}`);
-                console.log(`   File Size    : ${response.file_size_bytes} bytes`);
-                console.log(`   Record Count : ${response.record_count}`);
-            } else {
-                console.log('\n❌ Tidak ada data untuk di-export');
-            }
+        if (error) printOutput(`[Error] ${error.message}`);
+        else {
+            printOutput(`Export Berhasil!`);
+            printOutput(` URL: ${response.download_url}`);
         }
-        showMenu();
     });
 }
 
-/**
- * 8. Compliance status
- */
 async function getComplianceStatus() {
-    console.log('\n--- 📋 Compliance Status ---');
-
-    const period_start = await ask('Periode mulai (YYYY-MM-DD): ');
-    const period_end = await ask('Periode akhir (YYYY-MM-DD): ');
-
-    reportClient.GetComplianceStatus({
-        period_start: period_start || '',
-        period_end: period_end || ''
-    }, (error, response) => {
-        if (error) {
-            console.error('❌ Error:', error.message);
-        } else {
-            console.log(`\n📋 COMPLIANCE REPORT`);
-            console.log(`   Overall: ${response.overall_compliant ? '✅ COMPLIANT' : '⚠️ NON-COMPLIANT'}`);
-            console.log(`   Average Compliance Rate: ${response.average_compliance_rate}%`);
-
-            response.storage_compliance.forEach(s => {
-                const icon = s.compliant ? '✅' : '⚠️';
-                console.log(`\n   ${icon} Storage: ${s.storage_id}`);
-                console.log(`      Compliance : ${s.compliance_percentage}%`);
-                console.log(`      Violations : ${s.violations_count}`);
-            });
-
-            console.log('\n   📌 Recommendations:');
-            response.recommendations.forEach((r, i) => {
-                console.log(`      ${i + 1}. ${r}`);
-            });
-        }
-        showMenu();
-    });
-}
-
-// ===================== MENU =====================
-
-function showMenu() {
-    console.log('\n');
-    console.log('╔══════════════════════════════════════════════════════════╗');
-    console.log(`║   💻 CryoMedics User Panel - Welcome, ${userName.padEnd(18)}  ║`);
-    console.log('╠══════════════════════════════════════════════════════════╣');
-    console.log('║                                                          ║');
-    console.log('║   📦 Storage                                             ║');
-    console.log('║     1. Register stok baru                                ║');
-    console.log('║     2. Lihat inventaris                                  ║');
-    console.log('║     3. Hapus batch                                       ║');
-    console.log('║                                                          ║');
-    console.log('║   🔔 Alert                                               ║');
-    console.log('║     4. Lihat semua alert                                 ║');
-    console.log('║     5. Resolve alert                                     ║');
-    console.log('║                                                          ║');
-    console.log('║   📊 Report                                              ║');
-    console.log('║     6. Generate daily report                             ║');
-    console.log('║     7. Export data (CSV/JSON)                            ║');
-    console.log('║     8. Cek compliance status                             ║');
-    console.log('║                                                          ║');
-    console.log('║     0. Exit                                              ║');
-    console.log('║                                                          ║');
-    console.log('╚══════════════════════════════════════════════════════════╝');
-
-    rl.question('\n Pilih menu [0-8]: ', async (choice) => {
-        switch (choice.trim()) {
-            case '1': await registerStock(); break;
-            case '2': await getInventory(); break;
-            case '3': await removeBatch(); break;
-            case '4': await getAlerts(); break;
-            case '5': await resolveAlert(); break;
-            case '6': await generateDailyReport(); break;
-            case '7': await exportCSV(); break;
-            case '8': await getComplianceStatus(); break;
-            case '0':
-                console.log('\n👋 Terima kasih telah menggunakan CryoMedics!\n');
-                rl.close();
-                process.exit(0);
-                break;
-            default:
-                console.log('\n⚠️ Pilihan tidak valid. Silakan pilih 0-8.');
-                showMenu();
+    printOutput('--- COMPLIANCE STATUS ---');
+    reportClient.GetComplianceStatus({ period_start: '', period_end: '' }, (error, response) => {
+        if (error) printOutput(`[Error] ${error.message}`);
+        else {
+            printOutput(`Overall: ${response.overall_compliant ? 'COMPLIANT' : 'NON-COMPLIANT'}`);
+            printOutput(`Avg Rate: ${response.average_compliance_rate}%`);
         }
     });
 }
+
+async function checkUserInfo() {
+    printOutput('--- CEK INFO USER ---');
+    const userId = await ask('Masukkan Target User ID:');
+    if(!userId) return printOutput('Cancelled.');
+    const searchId = userId.toUpperCase().trim();
+    const user = MOCK_USERS[searchId];
+
+    if (user) {
+        printOutput(`User Found:`);
+        printOutput(` Nama : ${user.name} ${searchId === currentUserId.toUpperCase() ? '(You)' : ''}`);
+        printOutput(` Role : ${user.role}`);
+        printOutput(` Dept : ${user.department}`);
+    } else {
+        printOutput(`[Warning] User '${userId}' tidak ditemukan.`);
+    }
+}
+
+// ===================== MENU HANDLING =====================
+
+menuList.on('select', async (item, index) => {
+    switch(index) {
+        case 0: await registerStock(); break;
+        case 1: await getInventory(); break;
+        case 2: await removeBatch(); break;
+        case 3: await getAlerts(); break;
+        case 4: await resolveAlert(); break;
+        case 5: await generateDailyReport(); break;
+        case 6: await exportCSV(); break;
+        case 7: await getComplianceStatus(); break;
+        case 8: await checkUserInfo(); break;
+        case 9:
+            screen.destroy();
+            console.log('Session Ended. Goodbye!');
+            process.exit(0);
+            break;
+    }
+    menuList.focus(); // Return focus to menu after action
+});
+
+// Key bindings
+screen.key(['escape', 'C-c'], function() {
+    return process.exit(0);
+});
 
 // ===================== RUN =====================
 
-console.log('');
-console.log('╔══════════════════════════════════════════════════════════╗');
-console.log('║                                                          ║');
-console.log(`║   💻 CryoMedics - User Client (${userName.padEnd(23)} ║`);
-console.log('║   Connecting to server...                                ║');
-console.log('║                                                          ║');
-console.log('╚══════════════════════════════════════════════════════════╝');
+function loadSystemOverview() {
+    const user = MOCK_USERS[currentUserId.toUpperCase()];
+    
+    monitoringClient.GetAllStorageStatus({}, (error, response) => {
+        let storageCount = 0;
+        let onlineCount = 0;
+        
+        if (!error && response && response.storages) {
+            storageCount = response.storages.length;
+            onlineCount = response.storages.filter(s => s.status !== 'OFFLINE').length;
+        }
 
+        const info = [
+            ` User Profile : ${user.name} | ${user.role} (${user.department})`,
+            ` Session ID   : ${currentUserId}`,
+            ` Target Host  : ${SERVER_ADDRESS}`,
+            ` Node Status  : ${onlineCount}/${storageCount} Storages Online`
+        ].join('\n');
+
+        overviewBox.setContent('\n' + info);
+        screen.render();
+    });
+}
+
+loadSystemOverview();
+printOutput('Starting System...');
 startWatchingAlerts();
-showMenu();
+
+menuList.focus();
+screen.render();

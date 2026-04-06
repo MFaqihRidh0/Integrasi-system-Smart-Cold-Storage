@@ -72,7 +72,7 @@ function generateReading(config, readingIndex) {
         // Anomali suhu naik drastis (simulasi pintu terbuka)
         temperature += 15 + Math.random() * 10; // Suhu naik 15-25°C
         humidity += 20; // Kelembaban juga naik
-        console.log(`   ⚠️  ANOMALY INJECTED at reading #${readingIndex + 1}!`);
+        console.log(`   [WARNING] ANOMALY INJECTED at reading #${readingIndex + 1}!`);
     }
 
     return {
@@ -89,40 +89,40 @@ function generateReading(config, readingIndex) {
 
 function startSensorStreaming() {
     console.log('');
-    console.log('╔══════════════════════════════════════════════════════════╗');
-    console.log('║   🌡️  CryoMedics - Sensor Client                        ║');
-    console.log('╠══════════════════════════════════════════════════════════╣');
-    console.log(`║   📡 Connecting to: ${SERVER_ADDRESS}                     ║`);
-    console.log(`║   🧊 Storage: ${SENSOR_CONFIG.storage_id}                          ║`);
-    console.log(`║   🔧 Sensor: ${SENSOR_CONFIG.sensor_id}                        ║`);
-    console.log(`║   ⏱️  Interval: ${SENSOR_CONFIG.interval_ms}ms                              ║`);
-    console.log(`║   📦 Total readings: ${SENSOR_CONFIG.total_readings}                            ║`);
-    console.log('╚══════════════════════════════════════════════════════════╝');
+    console.log('------------------------------------------------------');
+    console.log(' [System] CryoMedics - Sensor Client');
+    console.log('------------------------------------------------------');
+    console.log(` [System] Connecting to: ${SERVER_ADDRESS}`);
+    console.log(` [System] Storage: ${SENSOR_CONFIG.storage_id}`);
+    console.log(` [System] Sensor: ${SENSOR_CONFIG.sensor_id}`);
+    console.log(` [System] Interval: ${SENSOR_CONFIG.interval_ms}ms`);
+    console.log(` [System] Total readings: ${SENSOR_CONFIG.total_readings}`);
+    console.log('------------------------------------------------------');
     console.log('');
 
     // Membuat client-side stream
     const stream = monitoringClient.StreamTelemetry((error, summary) => {
         if (error) {
-            console.error('\n❌ StreamTelemetry error:', error.message);
+            console.error('\n[Error] StreamTelemetry error:', error.message);
             return;
         }
 
         // Server mengirim summary setelah stream selesai
         console.log('\n');
-        console.log('╔══════════════════════════════════════════════════════════╗');
-        console.log('║   📊 TELEMETRY SUMMARY (from Server)                    ║');
-        console.log('╠══════════════════════════════════════════════════════════╣');
-        console.log(`║   Storage ID       : ${summary.storage_id}`);
-        console.log(`║   Total Packets    : ${summary.total_packets_received}`);
-        console.log(`║   Avg Temperature  : ${summary.avg_temperature}°C`);
-        console.log(`║   Min Temperature  : ${summary.min_temperature}°C`);
-        console.log(`║   Max Temperature  : ${summary.max_temperature}°C`);
-        console.log(`║   Avg Humidity     : ${summary.avg_humidity}%`);
-        console.log(`║   Anomaly Count    : ${summary.anomaly_count}`);
-        console.log(`║   Critical Alert   : ${summary.has_critical_alert ? '🚨 YES' : '✅ NO'}`);
-        console.log(`║   Session Start    : ${summary.session_start}`);
-        console.log(`║   Session End      : ${summary.session_end}`);
-        console.log('╚══════════════════════════════════════════════════════════╝');
+        console.log('------------------------------------------------------');
+        console.log(' [Report] TELEMETRY SUMMARY (from Server)');
+        console.log('------------------------------------------------------');
+        console.log(` > Storage ID       : ${summary.storage_id}`);
+        console.log(` > Total Packets    : ${summary.total_packets_received}`);
+        console.log(` > Avg Temperature  : ${summary.avg_temperature}°C`);
+        console.log(` > Min Temperature  : ${summary.min_temperature}°C`);
+        console.log(` > Max Temperature  : ${summary.max_temperature}°C`);
+        console.log(` > Avg Humidity     : ${summary.avg_humidity}%`);
+        console.log(` > Anomaly Count    : ${summary.anomaly_count}`);
+        console.log(` > Critical Alert   : ${summary.has_critical_alert ? 'YES' : 'NO'}`);
+        console.log(` > Session Start    : ${summary.session_start}`);
+        console.log(` > Session End      : ${summary.session_end}`);
+        console.log('------------------------------------------------------');
         console.log('');
 
         // Tutup koneksi
@@ -132,13 +132,13 @@ function startSensorStreaming() {
     // Kirim data sensor secara berkala
     let readingCount = 0;
 
-    console.log(`🚀 Starting telemetry stream for '${SENSOR_CONFIG.storage_id}'...\n`);
+    console.log(`[System] Starting telemetry stream for '${SENSOR_CONFIG.storage_id}'...\n`);
 
     const sendInterval = setInterval(() => {
         if (readingCount >= SENSOR_CONFIG.total_readings) {
             clearInterval(sendInterval);
 
-            console.log(`\n📤 All ${SENSOR_CONFIG.total_readings} readings sent. Closing stream...`);
+            console.log(`\n[System] All ${SENSOR_CONFIG.total_readings} readings sent. Closing stream...`);
 
             // Tutup stream (trigger server untuk mengirim summary)
             stream.end();
@@ -150,8 +150,8 @@ function startSensorStreaming() {
         // Kirim ke server via stream
         stream.write(reading);
 
-        const statusIcon = reading.temperature > SENSOR_CONFIG.base_temperature + 5 ? '🔴' :
-                          reading.temperature > SENSOR_CONFIG.base_temperature + 2 ? '🟡' : '🟢';
+        const statusIcon = reading.temperature > SENSOR_CONFIG.base_temperature + 5 ? '[CRITICAL]' :
+                          reading.temperature > SENSOR_CONFIG.base_temperature + 2 ? '[WARNING]' : '[OK]';
 
         console.log(`   ${statusIcon} [${readingCount + 1}/${SENSOR_CONFIG.total_readings}] Temp: ${reading.temperature}°C | Humidity: ${reading.humidity}% | Pressure: ${reading.pressure} hPa`);
 

@@ -1,25 +1,21 @@
 /**
  * ============================================================
- *  📱 CryoMedics - Dashboard Client (Tablet)
+ *  📱 CryoMedics - Advanced Dashboard Client (Tablet/Monitor)
  * ============================================================
- *  Client untuk dashboard monitoring di tablet yang menampilkan
- *  status real-time semua kulkas dan menerima alert streaming.
- *
- *  Fitur:
- *  1. Menampilkan status semua storage secara periodik
- *  2. Watch alerts real-time (server-side streaming)
- *  3. Menampilkan history telemetry storage tertentu
+ *  Client untuk monitoring TUI (Text-Based User Interface)
+ *  menggunakan library blessed dan blessed-contrib.
  * ============================================================
  */
 
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
+const blessed = require('blessed');
+const contrib = require('blessed-contrib');
 
 // ===================== LOAD PROTO =====================
 
 const PROTO_PATH = path.join(__dirname, '..', 'proto', 'medicold.proto');
-
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
     keepCase: true,
     longs: Number,
@@ -27,13 +23,11 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
     defaults: true,
     oneofs: true
 });
-
 const medicoldProto = grpc.loadPackageDefinition(packageDefinition).medicold;
 
 // ===================== CLIENT SETUP =====================
 
 const SERVER_ADDRESS = 'localhost:50051';
-
 const monitoringClient = new medicoldProto.MonitoringService(
     SERVER_ADDRESS, grpc.credentials.createInsecure()
 );
@@ -41,154 +35,170 @@ const alertClient = new medicoldProto.AlertService(
     SERVER_ADDRESS, grpc.credentials.createInsecure()
 );
 
-// ===================== DASHBOARD FUNCTIONS =====================
+// ===================== UI SETUP (BLESSED) =====================
 
-/**
- * Menampilkan status semua storage (refresh periodik)
- */
-function displayAllStorageStatus() {
+// Buat layar utama
+const screen = blessed.screen({
+    smartCSR: true,
+    title: 'CryoMedics TUI Dashboard'
+});
+
+// Setup master grid 12 baris x 12 kolom
+const grid = new contrib.grid({ rows: 12, cols: 12, screen: screen });
+
+// 1. GRAFIK SUHU (Line Chart) -> Kiri Atas
+const lineChart = grid.set(0, 0, 6, 8, contrib.line, {
+    style: { line: "cyan", text: "green", baseline: "black" },
+    xLabelPadding: 3,
+    xPadding: 5,
+    showLegend: true,
+    wholeNumbersOnly: false,
+    label: ' Live Temperature History (°C) '
+});
+
+// 2. TABEL STATUS KULKAS (Table) -> Kiri Bawah
+const statusTable = grid.set(6, 0, 6, 8, contrib.table, {
+    keys: true,
+    fg: 'white',
+    selectedFg: 'white',
+    selectedBg: 'blue',
+    interactive: false,
+    label: ' Storage Status ',
+    columnSpacing: 3,
+    columnWidth: [14, 10, 10, 12, 14]
+});
+
+// 3. GAUGE KEPATUHAN (Donut/Gauge) -> Kanan Atas
+const complianceGauge = grid.set(0, 8, 3, 4, contrib.gauge, {
+    label: ' System Compliance (%) ',
+    stroke: 'green',
+    fill: 'white'
+});
+
+// 4. LOG ALARM (Log Box) -> Kanan Bawah
+const alertLog = grid.set(3, 8, 9, 4, contrib.log, {
+    fg: "red",
+    selectedFg: "red",
+    label: ' Live Alerts Board '
+});
+
+// Struktur data grafik suhu
+let temperatureData = {
+    title: 'FRIDGE-001',
+    x: [],
+    y: []
+};
+
+// ===================== DATA POLLING & STREAMS =====================
+
+function updateStorageTable() {
     monitoringClient.GetAllStorageStatus({}, (error, response) => {
         if (error) {
-            console.error('❌ Error getting storage status:', error.message);
+            alertLog.log(`[SYS ERR] ${error.message}`);
             return;
         }
-
-        console.clear();
-        console.log('');
-        console.log('╔══════════════════════════════════════════════════════════════════════╗');
-        console.log('║   📱 CryoMedics Dashboard - Real-time Monitoring                    ║');
-        console.log(`║   🕐 ${new Date().toLocaleString()}                                   `);
-        console.log('╠══════════════════════════════════════════════════════════════════════╣');
-
-        if (response.storages.length === 0) {
-            console.log('║   Tidak ada storage yang terdaftar                                  ║');
-        } else {
-            response.storages.forEach(storage => {
-                // Status icon & color
-                let statusIcon = '🟢';
-                if (storage.status === 'CRITICAL') statusIcon = '🔴';
-                else if (storage.status === 'WARNING') statusIcon = '🟡';
-                else if (storage.status === 'OFFLINE') statusIcon = '⚫';
-
-                console.log('║                                                                      ║');
-                console.log(`║   ${statusIcon} ${storage.storage_id}                                            `);
-                console.log(`║      🌡️  Temperature : ${storage.current_temp.toFixed(2)}°C                      `);
-                console.log(`║      💧 Humidity     : ${storage.current_humidity.toFixed(2)}%                    `);
-                console.log(`║      📊 Status       : ${storage.status}                                        `);
-                console.log(`║      📦 Batches      : ${storage.batch_count}                                    `);
-                console.log(`║      🕐 Last Update  : ${new Date(storage.last_update).toLocaleString()}          `);
-                console.log('║   ────────────────────────────────────────────────                   ║');
+        
+        let complianceCount = 0;
+        let tableData = [];
+        
+        if (response.storages) {
+            response.storages.forEach(s => {
+                tableData.push([
+                    s.storage_id,
+                    `${s.current_temp.toFixed(1)}°C`,
+                    `${s.current_humidity.toFixed(1)}%`,
+                    s.status,
+                    new Date(s.last_update).toLocaleTimeString()
+                ]);
+                if (s.status === 'OK') complianceCount++;
             });
         }
+        
+        statusTable.setData({
+            headers: ['Storage ID', 'Temp', 'Humidity', 'Status', 'Last Update'],
+            data: tableData
+        });
 
-        console.log('║                                                                      ║');
-        console.log('╚══════════════════════════════════════════════════════════════════════╝');
+        // Update Gauge Speedometer berdasarkan tingkat kepatuhan system
+        const total = response.storages.length || 1;
+        const pct = Math.round((complianceCount / total) * 100);
+        complianceGauge.setPercent(pct);
+        
+        if (pct === 100) {
+            complianceGauge.options.stroke = 'green';
+        } else if (pct >= 50) {
+            complianceGauge.options.stroke = 'yellow';
+        } else {
+            complianceGauge.options.stroke = 'red';
+        }
+        
+        screen.render();
     });
 }
 
-/**
- * Watch alerts secara real-time (Server-side Streaming)
- */
-function watchAlerts() {
-    console.log('\n👁️  Starting alert watcher (Server-side Streaming)...\n');
+function fetchTemperatureHistory() {
+    monitoringClient.GetStorageHistory({
+        storage_id: 'FRIDGE-001',
+        start_time: 0,
+        end_time: Date.now(),
+        limit: 15 // Ambil 15 data terakhir
+    }, (error, response) => {
+        if (error) return;
+        
+        if (response.readings && response.readings.length > 0) {
+            // Karena history dari DB baru ke lama, kita balikkan agar lama ke baru (chart dari kiri ke kanan)
+            const readings = response.readings.reverse();
+            
+            // Format jam "10:15:30"
+            temperatureData.x = readings.map(r => new Date(r.timestamp).toLocaleTimeString().substring(0, 8));
+            temperatureData.y = readings.map(r => r.temperature);
+            
+            lineChart.setData([temperatureData]);
+            screen.render();
+        }
+    });
+}
 
-    const stream = alertClient.WatchAlerts({ min_severity: 0 }); // Watch semua severity
+function watchAlertsStream() {
+    const stream = alertClient.WatchAlerts({ min_severity: 0 });
 
     stream.on('data', (notification) => {
-        const severityLabels = ['INFO', 'WARNING', 'CRITICAL'];
+        const severityLabels = ['INFO', 'WARN', 'CRIT'];
         const alert = notification.alert;
 
         if (notification.notification_type === 'CONNECTED') {
-            console.log(`✅ ${alert.message}`);
-            return;
-        }
-
-        const icon = alert.severity === 2 ? '🔴' : alert.severity === 1 ? '🟡' : '🔵';
-        const time = new Date(alert.triggered_at).toLocaleString();
-
-        console.log(`\n${icon} [${notification.notification_type}] ${severityLabels[alert.severity]} Alert`);
-        console.log(`   Storage  : ${alert.storage_id}`);
-        console.log(`   Message  : ${alert.message}`);
-        console.log(`   Value    : ${alert.value} | Threshold: ${alert.threshold}`);
-        console.log(`   Time     : ${time}`);
-    });
-
-    stream.on('end', () => {
-        console.log('\n📴 Alert watching stream ended');
-    });
-
-    stream.on('error', (error) => {
-        if (error.code === 1) { // CANCELLED
-            console.log('\n📴 Alert watcher disconnected');
+            alertLog.log(`[SYS] ${alert.message}`);
         } else {
-            console.error('\n❌ Alert watcher error:', error.message);
+            const time = new Date(alert.triggered_at).toLocaleTimeString();
+            const prefix = notification.notification_type === 'ALERT_RESOLVED' ? '[RESOLVED]' : `[${severityLabels[alert.severity]}]`;
+            
+            // Tulis warnanya melalui ANSI atau biarkan standar
+            alertLog.log(`${time} ${prefix}`);
+            alertLog.log(` > ${alert.storage_id}: ${alert.message}`);
         }
+        screen.render();
+    });
+
+    stream.on('error', () => {
+        alertLog.log('[SYS ERR] Alert streaming disconnected.');
     });
 }
 
-/**
- * Menampilkan riwayat telemetry storage tertentu
- */
-function getStorageHistory(storageId, limit = 10) {
-    monitoringClient.GetStorageHistory({
-        storage_id: storageId,
-        start_time: 0,
-        end_time: Date.now(),
-        limit: limit
-    }, (error, response) => {
-        if (error) {
-            console.error('❌ Error:', error.message);
-            return;
-        }
+// ===================== RUN & INTERVALS =====================
 
-        console.log(`\n📜 History for '${response.storage_id}' (last ${limit} readings):\n`);
-        console.log('   ┌───────────────────────────┬──────────────┬──────────────┐');
-        console.log('   │ Timestamp                 │ Temperature  │ Humidity     │');
-        console.log('   ├───────────────────────────┼──────────────┼──────────────┤');
+// Initial Fetch
+updateStorageTable();
+fetchTemperatureHistory();
+watchAlertsStream();
 
-        response.readings.forEach(r => {
-            const time = new Date(r.timestamp).toLocaleString().padEnd(25);
-            const temp = `${r.temperature.toFixed(2)}°C`.padEnd(12);
-            const hum = `${r.humidity.toFixed(2)}%`.padEnd(12);
-            console.log(`   │ ${time} │ ${temp} │ ${hum} │`);
-        });
+// Periodical Refresh (Setiap 5 detik)
+setInterval(updateStorageTable, 5000);
+setInterval(fetchTemperatureHistory, 5000);
 
-        console.log('   └───────────────────────────┴──────────────┴──────────────┘');
-    });
-}
-
-// ===================== MAIN =====================
-
-console.log('');
-console.log('╔══════════════════════════════════════════════════════════╗');
-console.log('║                                                          ║');
-console.log('║   📱 CryoMedics - Dashboard Client (Tablet)             ║');
-console.log('║   Connecting to server...                                ║');
-console.log('║                                                          ║');
-console.log('╚══════════════════════════════════════════════════════════╝');
-console.log('');
-
-// 1. Tampilkan status awal
-displayAllStorageStatus();
-
-// 2. Refresh status setiap 10 detik
-const refreshInterval = setInterval(displayAllStorageStatus, 10000);
-
-// 3. Watch alerts real-time
-setTimeout(() => {
-    watchAlerts();
-}, 1000);
-
-// 4. Tampilkan history FRIDGE-001 setelah 3 detik
-setTimeout(() => {
-    getStorageHistory('FRIDGE-001', 10);
-}, 3000);
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-    console.log('\n\n👋 Dashboard client shutting down...');
-    clearInterval(refreshInterval);
-    process.exit(0);
+// Key bindings untuk keluar dari aplikasi
+screen.key(['escape', 'q', 'C-c'], function() {
+    return process.exit(0);
 });
 
-console.log('📡 Dashboard running. Press Ctrl+C to stop.\n');
+// Render pertama kali
+screen.render();

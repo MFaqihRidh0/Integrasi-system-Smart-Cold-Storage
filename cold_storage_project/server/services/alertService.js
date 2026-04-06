@@ -22,7 +22,7 @@ const alertServiceHandlers = {
     async GetAlerts(call, callback) {
         const { storage_id, severity, resolved_only } = call.request;
 
-        console.log(`\n[AlertService] 🔔 GetAlerts request → storage: '${storage_id || 'ALL'}' | severity: ${severity} | resolved_only: ${resolved_only}`);
+        console.log(`\n[AlertService] [ALERT] GetAlerts request → storage: '${storage_id || 'ALL'}' | severity: ${severity} | resolved_only: ${resolved_only}`);
 
         try {
             const result = await alertLogic.getAlerts(storage_id, severity, resolved_only);
@@ -44,7 +44,7 @@ const alertServiceHandlers = {
     async ResolveAlert(call, callback) {
         const { alert_id, resolved_by, resolution_notes } = call.request;
 
-        console.log(`\n[AlertService] ✅ ResolveAlert request → alert: '${alert_id}' | by: '${resolved_by}'`);
+        console.log(`\n[AlertService] [OK] ResolveAlert request → alert: '${alert_id}' | by: '${resolved_by}'`);
 
         try {
             const result = await alertLogic.resolveAlert(alert_id, resolved_by, resolution_notes);
@@ -64,10 +64,17 @@ const alertServiceHandlers = {
      */
     WatchAlerts(call) {
         const { min_severity } = call.request;
-        const watcherId = uuidv4();
+        
+        let watcherId = uuidv4();
+        if (call.metadata) {
+            const userIdMeta = call.metadata.get('user-id');
+            if (userIdMeta && userIdMeta.length > 0) {
+                watcherId = userIdMeta[0];
+            }
+        }
 
         const severityLabels = ['INFO', 'WARNING', 'CRITICAL'];
-        console.log(`\n[AlertService] 👁️  WatchAlerts started → Watcher: '${watcherId}' | Min severity: ${severityLabels[min_severity] || 'INFO'}`);
+        console.log(`\n[AlertService] [WATCH] WatchAlerts started → Watcher: '${watcherId}' | Min severity: ${severityLabels[min_severity] || 'INFO'}`);
 
         // Daftarkan watcher ke store
         store.addAlertWatcher(watcherId, call, min_severity);
@@ -92,13 +99,13 @@ const alertServiceHandlers = {
 
         // Cleanup saat client disconnect
         call.on('cancelled', () => {
-            console.log(`[AlertService] 👁️  Watcher '${watcherId}' disconnected`);
+            console.log(`[AlertService] [DISCONNECT] Watcher '${watcherId}' disconnected`);
             store.removeAlertWatcher(watcherId);
         });
 
         call.on('error', (error) => {
             if (error.code !== 1) { // Ignore CANCELLED errors
-                console.error(`[AlertService] ❌ WatchAlerts error for '${watcherId}':`, error.message);
+                console.error(`[AlertService] [ERR] WatchAlerts error for '${watcherId}':`, error.message);
             }
             store.removeAlertWatcher(watcherId);
         });

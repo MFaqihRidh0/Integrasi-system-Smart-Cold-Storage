@@ -178,6 +178,10 @@ class DbStore extends EventEmitter {
         this.alertWatchers.delete(watcherId);
     }
 
+    getAlertWatchersCount() {
+        return this.alertWatchers.size;
+    }
+
     _notifyAlertWatchers(alert, notificationType) {
         for (const [watcherId, watcher] of this.alertWatchers.entries()) {
             try {
