@@ -2,85 +2,88 @@ syntax = "proto3";
 
 package medicold;
 
-// Storage Service (Service 1)
-service StorageService{
-    rpc RegisteStock(StockBatch) returns (RegisterStockResponse);
+//Services
+
+// StorageService - Manajemen stok & inventaris kulkas medis
+service StorageService {
+    rpc RegisterStock(StockBatch) returns (RegisterStockResponse);
     rpc GetInventory(GetInventoryRequest) returns (InventoryRecord);
     rpc RemoveBatch(RemoveBatchRequest) returns (RemoveBatchResponse);
 }
 
-// Monitoring Service (Service 2)
-service MonitoringService{
-    // ⭐ CLIENT-SIDE STREAMING: Sensor kirim stream data ke server
-    rpc StreamTelemetry(stream TelemetryReading) returns (TelemetrySummary);
+// MonitoringService - Monitoring suhu & kondisi real-time
+service MonitoringService {
+    rpc StreamTelemetry(stream TelemetryReading) returns (TelemetrySummary);  // Client-side streaming
     rpc GetAllStorageStatus(Empty) returns (AllStorageStatus);
     rpc GetStorageHistory(StorageHistoryRequest) returns (StorageHistory);
 }
 
-// Alert Service (Service 3)
-service AlertService{
+// AlertService - Manajemen alert & notifikasi
+service AlertService {
     rpc GetAlerts(GetAlertsRequest) returns (AlertList);
     rpc ResolveAlert(ResolveAlertRequest) returns (ResolveAlertResponse);
-    // SERVER-SIDE STREAMING: Server push alerts ke dashboard
-    rpc WatchAlerts(WatchAlertsRequest) returns (stream AlertNotification);
+    rpc WatchAlerts(WatchAlertsRequest) returns (stream AlertNotification);   // Server-side streaming
 }
 
-// Report Service (Service 4)
-service ReportService{
+// ReportService - Laporan & compliance
+service ReportService {
     rpc GenerateDailyReport(DailyReportRequest) returns (DailyReport);
     rpc ExportCSV(ExportRequest) returns (ExportResponse);
     rpc GetComplianceStatus(ComplianceRequest) returns (ComplianceReport);
 }
 
-// ============================================
-// MESSAGES FOR STORAGE SERVICE
-// ============================================
-message StockBatch{
+
+//Messages
+// --- StorageService Messages ---
+
+message StockBatch {
     string batch_id = 1;
     string storage_id = 2;
-    string content_type = 3;
+    string content_type = 3;       // Jenis obat/vaksin
     int32 quantity = 4;
     string expiry_date = 5;
     string notes = 6;
-    double min_temp = 7;
-    double max_temp = 8;
+    double min_temp = 7;           // Batas suhu minimum yang diizinkan
+    double max_temp = 8;           // Batas suhu maksimum yang diizinkan
 }
 
-message RegisterStockResponse{
+message RegisterStockResponse {
     bool success = 1;
     string message = 2;
 }
 
-message GetInventoryRequest{
+message GetInventoryRequest {
     string storage_id = 1;
 }
 
-message InventoryRecord{
+message InventoryRecord {
     string storage_id = 1;
     repeated StockBatch batches = 2;
     int64 last_updated = 3;
 }
 
-message RemoveBatchRequest{
+message RemoveBatchRequest {
     string batch_id = 1;
     string reason = 2;
 }
 
-message RemoveBatchResponse{
+message RemoveBatchResponse {
     bool success = 1;
     string message = 2;
 }
-//Message untuk monitoring service (Client-side streaming)
-message TelemetryReading{
-    string storage_id = 1;      // ID storage unit
-    double temperature = 2;     // Celsius
-    double humidity = 3;        // Percentage
-    double pressure = 4;        // hPa
-    int64 timestamp = 5;        // Unix timestamp ms
-    string sensor_id = 6;       // ID sensor pengirim
+
+// --- MonitoringService Messages ---
+
+message TelemetryReading {
+    string storage_id = 1;
+    double temperature = 2;
+    double humidity = 3;
+    double pressure = 4;
+    int64 timestamp = 5;
+    string sensor_id = 6;
 }
 
-message TelemetrySummary{
+message TelemetrySummary {
     string storage_id = 1;
     int32 total_packets_received = 2;
     double avg_temperature = 3;
@@ -95,63 +98,64 @@ message TelemetrySummary{
 
 message Empty {}
 
-message AllStorageStatus{
+message AllStorageStatus {
     repeated StorageStatus storages = 1;
 }
 
-message StorageStatus{
+message StorageStatus {
     string storage_id = 1;
     double current_temp = 2;
     double current_humidity = 3;
-    string status = 4;          // Normal | Warning | Critical | Offline
+    string status = 4;             // NORMAL, WARNING, CRITICAL, OFFLINE
     int64 last_update = 5;
     int32 batch_count = 6;
 }
 
-message StorageHistoryRequest{
+message StorageHistoryRequest {
     string storage_id = 1;
     int64 start_time = 2;
     int64 end_time = 3;
     int32 limit = 4;
 }
 
-message StorageHistory{
+message StorageHistory {
     string storage_id = 1;
     repeated TelemetryReadings readings = 2;
 }
 
-message TelemetryReadings{
+message TelemetryReadings {
     double temperature = 1;
     double humidity = 2;
     int64 timestamp = 3;
 }
 
-//Message untuk alert service
-message GetAlertsRequest{
+// --- AlertService Messages ---
+
+message GetAlertsRequest {
     string storage_id = 1;
     AlertSeverity severity = 2;
     bool resolved_only = 3;
 }
 
-enum AlertSeverity{
+enum AlertSeverity {
     INFO = 0;
     WARNING = 1;
     CRITICAL = 2;
 }
 
-enum AlertType{
-    temp_out_of_range= 0;
-    humidity_high = 1;
-    sensor_disconnected = 2;
-    door_open_too_long = 3;
-    power_failure = 4;
+enum AlertType {
+    TEMP_OUT_OF_RANGE = 0;
+    HUMIDITY_HIGH = 1;
+    SENSOR_DISCONNECTED = 2;
+    DOOR_OPEN_TOO_LONG = 3;
+    POWER_FAILURE = 4;
 }
 
-message AlertList{
+message AlertList {
     repeated Alert alerts = 1;
 }
 
-message Alert{
+message Alert {
     string alert_id = 1;
     string storage_id = 2;
     AlertType type = 3;
@@ -165,33 +169,34 @@ message Alert{
     string resolved_by = 11;
 }
 
-message ResolveAlertRequest{
+message ResolveAlertRequest {
     string alert_id = 1;
     string resolved_by = 2;
     string resolution_notes = 3;
 }
 
-message ResolveAlertResponse{
+message ResolveAlertResponse {
     bool success = 1;
     string message = 2;
 }
 
-message WatchAlertsRequest{
+message WatchAlertsRequest {
     AlertSeverity min_severity = 1;
 }
 
-message AlertNotification{
+message AlertNotification {
     Alert alert = 1;
-    string notification_type = 2;  // New| Updated | Resolved | Existing
+    string notification_type = 2;  // NEW_ALERT, ALERT_RESOLVED, ALERT_ESCALATED
 }
 
-//Message untuk report service
-message DailyReportRequest{
-    string date = 1;            // YYYY-MM-DD
-    string storage_id = 2;      // Empty = all storages
+// --- ReportService Messages ---
+
+message DailyReportRequest {
+    string date = 1;               // Format: YYYY-MM-DD
+    string storage_id = 2;         // Kosongkan untuk semua storage
 }
 
-message DailyReport{
+message DailyReport {
     string report_date = 1;
     string generated_at = 2;
     repeated StorageDailySummary storage_summaries = 3;
@@ -200,7 +205,7 @@ message DailyReport{
     double system_uptime_percentage = 6;
 }
 
-message StorageDailySummary{
+message StorageDailySummary {
     string storage_id = 1;
     double avg_temp = 2;
     double min_temp = 3;
@@ -211,33 +216,33 @@ message StorageDailySummary{
     bool within_compliance = 8;
 }
 
-message ExportRequest{
+message ExportRequest {
     string storage_id = 1;
     int64 start_time = 2;
     int64 end_time = 3;
-    string format = 4;          // CSV or JSON
+    string format = 4;             // CSV, JSON
 }
 
-message ExportResponse{
+message ExportResponse {
     bool success = 1;
     string download_url = 2;
     int64 file_size_bytes = 3;
     int32 record_count = 4;
 }
 
-message ComplianceRequest{
-    string period_start = 1;    // YYYY-MM-DD
-    string period_end = 2;      // YYYY-MM-DD
+message ComplianceRequest {
+    string period_start = 1;       // Format: YYYY-MM-DD
+    string period_end = 2;
 }
 
-message ComplianceReport{
+message ComplianceReport {
     bool overall_compliant = 1;
     repeated StorageCompliance storage_compliance = 2;
     double average_compliance_rate = 3;
     repeated string recommendations = 4;
 }
 
-message StorageCompliance{
+message StorageCompliance {
     string storage_id = 1;
     bool compliant = 2;
     double compliance_percentage = 3;
@@ -245,7 +250,7 @@ message StorageCompliance{
     repeated ViolationDetail violations = 5;
 }
 
-message ViolationDetail{
+message ViolationDetail {
     int64 timestamp = 1;
     string type = 2;
     double duration_minutes = 3;
