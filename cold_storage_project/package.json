@@ -1,0 +1,27 @@
+{
+  "name": "cryomedics-smart-cold-storage",
+  "version": "1.0.0",
+  "description": "CryoMedics - Sistem Smart Cold Storage untuk penyimpanan medis berbasis gRPC",
+  "main": "server/server.js",
+  "scripts": {
+    "server": "node server/server.js",
+    "client:sensor": "node client/sensor_client.js",
+    "client:admin": "node client/admin_client.js",
+    "client:dashboard": "node client/dashboard_client.js",
+    "demo": "node server/server.js & sleep 2 && node client/sensor_client.js"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.9.0",
+    "@grpc/proto-loader": "^0.7.0",
+    "uuid": "^9.0.0"
+  },
+  "keywords": [
+    "grpc",
+    "cold-storage",
+    "medical",
+    "iot",
+    "monitoring"
+  ],
+  "author": "CryoMedics Team",
+  "license": "MIT"
+}
