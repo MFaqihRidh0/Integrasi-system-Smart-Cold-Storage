@@ -1,12 +1,12 @@
-# 🏥 CryoMedics - Smart Cold Storage System
+# CryoMedics - Smart Cold Storage System
 
 > Sistem monitoring smart cold storage untuk penyimpanan obat & vaksin medis berbasis **gRPC** dengan **Node.js**
 
-## 📖 Deskripsi
+## Deskripsi
 
 CryoMedics adalah sistem monitoring kulkas medis yang menggunakan arsitektur gRPC untuk komunikasi real-time antara sensor, server, dan dashboard. Setiap kulkas dilengkapi sensor yang mengirim data suhu secara terus-menerus menggunakan **client-side streaming**.
 
-## 🏗️ Arsitektur
+## Arsitektur
 
 ```
 ┌──────────────────┐     Client-side Streaming      ┌──────────────────────┐
@@ -25,7 +25,7 @@ CryoMedics adalah sistem monitoring kulkas medis yang menggunakan arsitektur gRP
 └──────────────────┘                                 └──────────────────────┘
 ```
 
-## 📁 Struktur Folder
+## Struktur Folder
 
 ```
 cold_storage_project_backup/
@@ -53,7 +53,7 @@ cold_storage_project_backup/
 └── README.md
 ```
 
-## 🔧 Services
+## Services
 
 ### 1. StorageService (Manajemen Inventaris)
 | RPC | Tipe | Deskripsi |
@@ -83,7 +83,7 @@ cold_storage_project_backup/
 | `ExportCSV` | Unary | Export data ke CSV/JSON |
 | `GetComplianceStatus` | Unary | Cek status kepatuhan suhu |
 
-## 🚀 Cara Menjalankan
+## Cara Menjalankan
 
 ### 1. Install Dependencies
 ```bash
@@ -121,7 +121,7 @@ npm run client:dashboard
 node client/dashboard_client.js
 ```
 
-## 🧊 Default Storage Units
+## Default Storage Units
 
 | Storage ID | Tipe | Suhu Awal | Kegunaan |
 |-----------|------|-----------|----------|
@@ -129,7 +129,7 @@ node client/dashboard_client.js
 | FRIDGE-002 | Refrigerator | 4°C | Penyimpanan obat umum |
 | FRIDGE-003 | Ultra-cold | -70°C | Penyimpanan vaksin mRNA |
 
-## 📡 Flow Client-side Streaming (Sensor → Server)
+## Flow Client-side Streaming (Sensor → Server)
 
 ```
 Sensor Client                          Server
@@ -146,7 +146,7 @@ Sensor Client                          Server
     │                                    │
 ```
 
-## 🛡️ Deteksi Anomali
+## Deteksi Anomali
 
 Sistem secara otomatis mendeteksi anomali berikut:
 
@@ -157,7 +157,7 @@ Sistem secara otomatis mendeteksi anomali berikut:
   - **WARNING**: Kelembaban 80-90%
   - **CRITICAL**: Kelembaban > 90%
 
-## 📝 Teknologi
+## Teknologi
 
 - **Node.js** - Runtime
 - **gRPC** (@grpc/grpc-js) - Framework RPC
