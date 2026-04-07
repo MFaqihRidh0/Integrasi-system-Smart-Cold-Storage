@@ -14,6 +14,36 @@ const store = require('../state/dbStore');
 const storageLogic = {
 
     /**
+     * Menambahkan storage (kulkas) baru ke sistem
+     */
+    async addStorage(storageData) {
+        const { storage_id } = storageData;
+        if (!storage_id) {
+            return {
+                success: false,
+                message: 'Storage ID tidak boleh kosong'
+            };
+        }
+
+        const existing = await store.getStorage(storage_id);
+        if (existing) {
+            return {
+                success: false,
+                message: `Storage unit '${storage_id}' sudah ada dalam sistem`
+            };
+        }
+
+        await store.addStorage(storage_id);
+
+        console.log(`[StorageLogic] ✅ Storage '${storage_id}' ditambahkan`);
+
+        return {
+            success: true,
+            message: `Storage '${storage_id}' berhasil ditambahkan ke sistem`
+        };
+    },
+
+    /**
      * Mendaftarkan batch obat/vaksin baru ke storage tertentu
      */
     async registerStock(batchData) {

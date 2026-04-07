@@ -23,6 +23,13 @@ class DbStore extends EventEmitter {
         return rows;
     }
 
+    async addStorage(storageId) {
+        await db.query(`
+            INSERT INTO storages (storage_id, current_temp, current_humidity, status)
+            VALUES ($1, 0.0, 0.0, 'NORMAL')
+        `, [storageId]);
+    }
+
     async updateStorageStatus(storageId, temp, humidity, status) {
         await db.query(`
             UPDATE storages 

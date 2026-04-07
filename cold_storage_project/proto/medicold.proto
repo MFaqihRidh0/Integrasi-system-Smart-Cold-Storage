@@ -6,6 +6,7 @@ package medicold;
 
 // StorageService - Manajemen stok & inventaris kulkas medis
 service StorageService {
+    rpc AddStorage(AddStorageRequest) returns (AddStorageResponse);
     rpc RegisterStock(StockBatch) returns (RegisterStockResponse);
     rpc GetInventory(GetInventoryRequest) returns (InventoryRecord);
     rpc RemoveBatch(RemoveBatchRequest) returns (RemoveBatchResponse);
@@ -35,6 +36,15 @@ service ReportService {
 // Messages
 
 // StorageService Messages
+
+message AddStorageRequest {
+    string storage_id = 1;
+}
+
+message AddStorageResponse {
+    bool success = 1;
+    string message = 2;
+}
 
 message StockBatch {
     string batch_id = 1;

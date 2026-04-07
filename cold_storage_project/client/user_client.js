@@ -1,8 +1,4 @@
-/**
- * ============================================================
- *  💻 CryoMedics - Admin Client (TUI Dashboard)
- * ============================================================
- */
+// TUI Dashboard
 
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
@@ -19,8 +15,7 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 });
 const medicoldProto = grpc.loadPackageDefinition(packageDefinition).medicold;
 
-// ===================== CLIENT SETUP =====================
-
+// Client Setup
 const SERVER_ADDRESS = 'localhost:50051';
 const storageClient = new medicoldProto.StorageService(SERVER_ADDRESS, grpc.credentials.createInsecure());
 const monitoringClient = new medicoldProto.MonitoringService(SERVER_ADDRESS, grpc.credentials.createInsecure());
@@ -43,11 +38,10 @@ MOCK_USERS[currentUserId.toUpperCase()] = {
     department: 'Central Control'
 };
 
-// ===================== UI SETUP =====================
 
 const screen = blessed.screen({ smartCSR: true, title: 'CryoMedics User Console' });
 // Enable key and mouse events globally to allow scrolling
-screen.key(['tab'], function() { screen.focusNext(); });
+screen.key(['tab'], function () { screen.focusNext(); });
 const grid = new contrib.grid({ rows: 12, cols: 12, screen: screen });
 
 // 1. Overview (Kiri Atas)
@@ -81,15 +75,16 @@ const menuList = grid.set(9, 0, 3, 8, blessed.list, {
     },
     mouse: true,
     items: [
-        '[1] Register Stok Baru',
-        '[2] Lihat Inventaris',
-        '[3] Hapus Batch',
-        '[4] Lihat Semua Alert',
-        '[5] Resolve Alert',
-        '[6] Generate Daily Report',
-        '[7] Export Data (CSV)',
-        '[8] Cek Compliance Status',
-        '[9] Cek Info User',
+        '[1] Tambah Storage Baru',
+        '[2] Register Stok Baru',
+        '[3] Lihat Inventaris',
+        '[4] Hapus Batch',
+        '[5] Lihat Semua Alert',
+        '[6] Resolve Alert',
+        '[7] Generate Daily Report',
+        '[8] Export Data (CSV)',
+        '[9] Cek Compliance Status',
+        '[10] Cek Info User',
         '[0] Exit'
     ]
 });
@@ -159,17 +154,17 @@ function getMeta() {
 }
 
 // Mouse scroll fix
-outputConsole.on('wheeldown', function() { outputConsole.scroll(1); screen.render(); });
-outputConsole.on('wheelup', function() { outputConsole.scroll(-1); screen.render(); });
-alertBoard.on('wheeldown', function() { alertBoard.scroll(1); screen.render(); });
-alertBoard.on('wheelup', function() { alertBoard.scroll(-1); screen.render(); });
+outputConsole.on('wheeldown', function () { outputConsole.scroll(1); screen.render(); });
+outputConsole.on('wheelup', function () { outputConsole.scroll(-1); screen.render(); });
+alertBoard.on('wheeldown', function () { alertBoard.scroll(1); screen.render(); });
+alertBoard.on('wheelup', function () { alertBoard.scroll(-1); screen.render(); });
 
 // ===================== WATCH ALERTS =====================
 
 function startWatchingAlerts() {
     const metadata = new grpc.Metadata();
     metadata.add('user-id', currentUserId);
-    
+
     const call = alertClient.WatchAlerts({ min_severity: 0 }, metadata);
 
     call.on('data', (response) => {
@@ -181,7 +176,7 @@ function startWatchingAlerts() {
             screen.render();
             return;
         }
-        
+
         if (type === 'USER_ACTION') {
             alertBoard.log(`[AUDIT] ${alert.message}`);
             screen.render();
@@ -191,10 +186,10 @@ function startWatchingAlerts() {
         const severityLabels = ['INFO', 'WARN', 'CRIT'];
         const time = new Date(alert.triggered_at).toLocaleTimeString();
         let prefix = type === 'ALERT_RESOLVED' ? '[RESOLVED]' : `[${severityLabels[alert.severity]}]`;
-        
+
         alertBoard.log(`${time} ${prefix}`);
         alertBoard.log(` > ${alert.storage_id}: ${alert.message}`);
-        
+
         if (type === 'ALERT_RESOLVED') {
             alertBoard.log(`   (by ${alert.resolved_by})`);
         }
@@ -208,10 +203,21 @@ function startWatchingAlerts() {
 
 // ===================== ADMIN FUNCTIONS =====================
 
+async function addStorage() {
+    printOutput('--- TAMBAH STORAGE BARU ---');
+    const storage_id = await ask('Storage ID Baru (e.g. FRIDGE-004):');
+    if (!storage_id) return printOutput('Cancelled.');
+
+    storageClient.AddStorage({ storage_id }, getMeta(), (error, response) => {
+        if (error) printOutput(`[Error] ${error.message}`);
+        else printOutput(`[Success] ${response.message}`);
+    });
+}
+
 async function registerStock() {
     printOutput('--- REGISTER STOCK ---');
     const batch_id = await ask('Batch ID:');
-    if(!batch_id) return printOutput('Cancelled.');
+    if (!batch_id) return printOutput('Cancelled.');
     const storage_id = await ask('Storage ID (e.g. FRIDGE-001):');
     const content_type = await ask('Jenis obat/vaksin:');
     const quantity = parseInt(await ask('Quantity:') || 0);
@@ -232,7 +238,7 @@ async function registerStock() {
 async function getInventory() {
     printOutput('--- LIHAT INVENTARIS ---');
     const storage_id = await ask('Storage ID (e.g. FRIDGE-001):');
-    if(!storage_id) return printOutput('Cancelled.');
+    if (!storage_id) return printOutput('Cancelled.');
 
     storageClient.GetInventory({ storage_id }, getMeta(), (error, response) => {
         if (error) {
@@ -256,7 +262,7 @@ async function getInventory() {
 async function removeBatch() {
     printOutput('--- HAPUS BATCH ---');
     const batch_id = await ask('Batch ID yang dihapus:');
-    if(!batch_id) return printOutput('Cancelled.');
+    if (!batch_id) return printOutput('Cancelled.');
     const reason = await ask('Alasan penghapusan:');
 
     storageClient.RemoveBatch({ batch_id, reason }, getMeta(), (error, response) => {
@@ -286,7 +292,7 @@ async function getAlerts() {
 async function resolveAlert() {
     printOutput('--- RESOLVE ALERT ---');
     const alert_id = await ask('Alert ID:');
-    if(!alert_id) return printOutput('Cancelled.');
+    if (!alert_id) return printOutput('Cancelled.');
     const resolution_notes = await ask('Catatan resolusi:');
 
     alertClient.ResolveAlert({
@@ -320,7 +326,7 @@ async function generateDailyReport() {
 async function exportCSV() {
     printOutput('--- EXPORT DATA ---');
     const storage_id = await ask('Storage ID:');
-    if(!storage_id) return printOutput('Cancelled.');
+    if (!storage_id) return printOutput('Cancelled.');
 
     reportClient.ExportCSV({
         storage_id, start_time: 0, end_time: Date.now(), format: 'CSV'
@@ -347,7 +353,7 @@ async function getComplianceStatus() {
 async function checkUserInfo() {
     printOutput('--- CEK INFO USER ---');
     const userId = await ask('Masukkan Target User ID:');
-    if(!userId) return printOutput('Cancelled.');
+    if (!userId) return printOutput('Cancelled.');
     const searchId = userId.toUpperCase().trim();
     const user = MOCK_USERS[searchId];
 
@@ -364,17 +370,18 @@ async function checkUserInfo() {
 // ===================== MENU HANDLING =====================
 
 menuList.on('select', async (item, index) => {
-    switch(index) {
-        case 0: await registerStock(); break;
-        case 1: await getInventory(); break;
-        case 2: await removeBatch(); break;
-        case 3: await getAlerts(); break;
-        case 4: await resolveAlert(); break;
-        case 5: await generateDailyReport(); break;
-        case 6: await exportCSV(); break;
-        case 7: await getComplianceStatus(); break;
-        case 8: await checkUserInfo(); break;
-        case 9:
+    switch (index) {
+        case 0: await addStorage(); break;
+        case 1: await registerStock(); break;
+        case 2: await getInventory(); break;
+        case 3: await removeBatch(); break;
+        case 4: await getAlerts(); break;
+        case 5: await resolveAlert(); break;
+        case 6: await generateDailyReport(); break;
+        case 7: await exportCSV(); break;
+        case 8: await getComplianceStatus(); break;
+        case 9: await checkUserInfo(); break;
+        case 10:
             screen.destroy();
             console.log('Session Ended. Goodbye!');
             process.exit(0);
@@ -384,7 +391,7 @@ menuList.on('select', async (item, index) => {
 });
 
 // Key bindings
-screen.key(['escape', 'C-c'], function() {
+screen.key(['escape', 'C-c'], function () {
     return process.exit(0);
 });
 
@@ -392,11 +399,11 @@ screen.key(['escape', 'C-c'], function() {
 
 function loadSystemOverview() {
     const user = MOCK_USERS[currentUserId.toUpperCase()];
-    
+
     monitoringClient.GetAllStorageStatus({}, getMeta(), (error, response) => {
         let storageCount = 0;
         let onlineCount = 0;
-        
+
         if (!error && response && response.storages) {
             storageCount = response.storages.length;
             onlineCount = response.storages.filter(s => s.status !== 'OFFLINE').length;

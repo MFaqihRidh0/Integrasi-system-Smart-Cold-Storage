@@ -14,7 +14,29 @@ const storageLogic = require('../logic/storageLogic');
 const storageServiceHandlers = {
 
     /**
+     * AddStorage - Menambahkan kulkas medis baru
+     * RPC Type: Unary
+     */
+    async AddStorage(call, callback) {
+        const data = call.request;
+
+        console.log(`\n[StorageService] 🏗️ AddStorage request → storage: '${data.storage_id}'`);
+
+        try {
+            const result = await storageLogic.addStorage(data);
+            callback(null, result);
+        } catch (error) {
+            console.error('[StorageService] ❌ AddStorage error:', error.message);
+            callback({
+                code: 13, // INTERNAL
+                message: error.message
+            });
+        }
+    },
+
+    /**
      * RegisterStock - Mendaftarkan batch baru ke kulkas medis
+
      * RPC Type: Unary
      */
     async RegisterStock(call, callback) {
