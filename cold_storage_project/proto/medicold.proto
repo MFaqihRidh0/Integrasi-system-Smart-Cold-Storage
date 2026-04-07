@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package medicold;
 
-// ========================= SERVICES =========================
+// Services
 
 // StorageService - Manajemen stok & inventaris kulkas medis
 service StorageService {
@@ -32,9 +32,9 @@ service ReportService {
     rpc GetComplianceStatus(ComplianceRequest) returns (ComplianceReport);
 }
 
-// ========================= MESSAGES =========================
+// Messages
 
-// --- StorageService Messages ---
+// StorageService Messages
 
 message StockBatch {
     string batch_id = 1;
@@ -72,7 +72,7 @@ message RemoveBatchResponse {
     string message = 2;
 }
 
-// --- MonitoringService Messages ---
+// MonitoringService Messages
 
 message TelemetryReading {
     string storage_id = 1;
@@ -106,7 +106,7 @@ message StorageStatus {
     string storage_id = 1;
     double current_temp = 2;
     double current_humidity = 3;
-    string status = 4;             // NORMAL, WARNING, CRITICAL, OFFLINE
+    string status = 4;             // Normal, Warning, Critical, Offline
     int64 last_update = 5;
     int32 batch_count = 6;
 }
@@ -129,7 +129,7 @@ message TelemetryReadings {
     int64 timestamp = 3;
 }
 
-// --- AlertService Messages ---
+// AlertService Messages
 
 message GetAlertsRequest {
     string storage_id = 1;
@@ -186,10 +186,10 @@ message WatchAlertsRequest {
 
 message AlertNotification {
     Alert alert = 1;
-    string notification_type = 2;  // NEW_ALERT, ALERT_RESOLVED, ALERT_ESCALATED
+    string notification_type = 2;  // New Alert, Alert Resolved, Alert Escalated
 }
 
-// --- ReportService Messages ---
+// ReportService Messages
 
 message DailyReportRequest {
     string date = 1;               // Format: YYYY-MM-DD
