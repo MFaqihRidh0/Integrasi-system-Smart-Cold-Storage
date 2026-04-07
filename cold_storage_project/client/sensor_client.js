@@ -1,23 +1,8 @@
-/**
- * ============================================================
- *  🌡️ CryoMedics - Sensor Client (Fridge Sensor Simulator)
- * ============================================================
- *  Simulasi sensor di kulkas medis yang mengirim data suhu
- *  secara terus-menerus menggunakan CLIENT-SIDE STREAMING.
- *
- *  Fitur:
- *  - Stream data suhu, kelembaban, tekanan ke server
- *  - Simulasi fluktuasi suhu realistis
- *  - Simulasi anomali (suhu di luar range)
- *  - Menerima summary dari server setelah streaming selesai
- * ============================================================
- */
-
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
 
-// ===================== LOAD PROTO =====================
+// Load Proto
 
 const PROTO_PATH = path.join(__dirname, '..', 'proto', 'medicold.proto');
 
@@ -31,7 +16,7 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 
 const medicoldProto = grpc.loadPackageDefinition(packageDefinition).medicold;
 
-// ===================== CLIENT SETUP =====================
+// Client Setup
 
 const SERVER_ADDRESS = 'localhost:50051';
 const monitoringClient = new medicoldProto.MonitoringService(
@@ -39,7 +24,7 @@ const monitoringClient = new medicoldProto.MonitoringService(
     grpc.credentials.createInsecure()
 );
 
-// ===================== SENSOR CONFIGURATION =====================
+// Sensor Configuration
 
 const SENSOR_CONFIG = {
     storage_id: 'FRIDGE-001',
@@ -54,7 +39,7 @@ const SENSOR_CONFIG = {
 
 let sessionCounter = 1;
 
-// ===================== HELPER FUNCTIONS =====================
+// Helper Functions
 
 /**
  * Simulasi pembacaan sensor dengan fluktuasi realistis
@@ -72,7 +57,7 @@ function generateReading(config, readingIndex) {
     // Simulasi anomali acak (Pintu terbuka atau kompresor mati sesaat)
     if (Math.random() < config.anomaly_probability) {
         temperature += 10 + Math.random() * 8; // Suhu tiba-tiba naik 10-18°C
-        humidity += 15; 
+        humidity += 15;
         console.log(`   [WARNING] ⚠️ SPONTANEOUS ANOMALY (Door open/Compressor spike)!`);
     }
 
@@ -86,7 +71,7 @@ function generateReading(config, readingIndex) {
     };
 }
 
-// ===================== MAIN: CONTINUOUS SESSIONS =====================
+// Main: Continuous Sessions
 
 function startSensorStreamSession() {
     console.log('');
@@ -128,10 +113,10 @@ function startSensorStreamSession() {
         console.log(` > Session Start    : ${summary.session_start}`);
         console.log(` > Session End      : ${summary.session_end}`);
         console.log('------------------------------------------------------');
-        
+
         sessionCounter++;
         console.log(`\n[System] Memulai ulang sensor untuk sesi #${sessionCounter} dalam 3 detik...`);
-        
+
         // Memulai stream berikutnya secara otomatis (Continuous loop)
         setTimeout(startSensorStreamSession, 3000);
     });
@@ -158,7 +143,7 @@ function startSensorStreamSession() {
         stream.write(reading);
 
         const statusIcon = reading.temperature > (SENSOR_CONFIG.base_temperature + 8) ? '🔴 [CRITICAL]' :
-                          reading.temperature > (SENSOR_CONFIG.base_temperature + 3) ? '🟡 [WARNING] ' : '🟢 [OK]       ';
+            reading.temperature > (SENSOR_CONFIG.base_temperature + 3) ? '🟡 [WARNING] ' : '🟢 [OK]       ';
 
         console.log(`   ${statusIcon} [${readingCount + 1}/${SENSOR_CONFIG.readings_per_session}] Temp: ${reading.temperature.toFixed(2)}°C | Hum: ${reading.humidity.toFixed(2)}% | Press: ${reading.pressure.toFixed(2)} hPa`);
 

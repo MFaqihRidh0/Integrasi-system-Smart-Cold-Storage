@@ -12,7 +12,6 @@ class DbStore extends EventEmitter {
         await db.initDB();
     }
 
-    // ===================== STORAGE METHODS =====================
 
     async getStorage(storageId) {
         const { rows } = await db.query('SELECT * FROM storages WHERE storage_id = $1', [storageId]);
@@ -39,7 +38,7 @@ class DbStore extends EventEmitter {
             INSERT INTO batches (batch_id, storage_id, content_type, quantity, expiry_date, notes, min_temp, max_temp)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `, [batch.batch_id, batch.storage_id, batch.content_type, batch.quantity, batch.expiry_date, batch.notes, batch.min_temp, batch.max_temp]);
-        
+
         // Update batch count in storage
         await this._updateBatchCount(batch.storage_id);
     }
@@ -96,7 +95,7 @@ class DbStore extends EventEmitter {
         }
 
         query += ` ORDER BY timestamp DESC`;
-        
+
         if (limit && limit > 0) {
             query += ` LIMIT $${paramIndex}`;
             params.push(limit);
@@ -112,12 +111,12 @@ class DbStore extends EventEmitter {
     async addAlert(alert) {
         alert.alert_id = alert.alert_id || uuidv4();
         alert.triggered_at = alert.triggered_at || Date.now();
-        
+
         await db.query(`
             INSERT INTO alerts (alert_id, storage_id, type, severity, message, value, threshold, triggered_at, resolved, resolved_at, resolved_by, resolution_notes)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, 0, '', '')
         `, [
-            alert.alert_id, alert.storage_id, alert.type, alert.severity, 
+            alert.alert_id, alert.storage_id, alert.type, alert.severity,
             alert.message, alert.value, alert.threshold, alert.triggered_at
         ]);
 
@@ -180,6 +179,23 @@ class DbStore extends EventEmitter {
 
     getAlertWatchersCount() {
         return this.alertWatchers.size;
+    }
+
+    broadcastUserAction(userName, userId, actionName) {
+        const dummyAlert = {
+            alert_id: 'AUDIT',
+            storage_id: 'SYSTEM',
+            type: 0,
+            severity: 0,
+            message: `User [${userName}] executed: ${actionName}`,
+            value: 0,
+            threshold: 0,
+            triggered_at: Date.now(),
+            resolved: true,
+            resolved_at: Date.now(),
+            resolved_by: userId
+        };
+        this._notifyAlertWatchers(dummyAlert, 'USER_ACTION');
     }
 
     _notifyAlertWatchers(alert, notificationType) {

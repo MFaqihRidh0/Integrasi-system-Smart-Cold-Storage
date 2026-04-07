@@ -151,6 +151,19 @@ function printOutput(text) {
     screen.render();
 }
 
+function getMeta() {
+    const meta = new grpc.Metadata();
+    meta.add('user-id', currentUserId);
+    meta.add('user-name', userName);
+    return meta;
+}
+
+// Mouse scroll fix
+outputConsole.on('wheeldown', function() { outputConsole.scroll(1); screen.render(); });
+outputConsole.on('wheelup', function() { outputConsole.scroll(-1); screen.render(); });
+alertBoard.on('wheeldown', function() { alertBoard.scroll(1); screen.render(); });
+alertBoard.on('wheelup', function() { alertBoard.scroll(-1); screen.render(); });
+
 // ===================== WATCH ALERTS =====================
 
 function startWatchingAlerts() {
@@ -165,6 +178,12 @@ function startWatchingAlerts() {
 
         if (type === 'CONNECTED') {
             alertBoard.log(`[SYS] ${alert.message}`);
+            screen.render();
+            return;
+        }
+        
+        if (type === 'USER_ACTION') {
+            alertBoard.log(`[AUDIT] ${alert.message}`);
             screen.render();
             return;
         }
@@ -204,7 +223,7 @@ async function registerStock() {
     storageClient.RegisterStock({
         batch_id, storage_id, content_type, quantity,
         expiry_date, notes, min_temp, max_temp
-    }, (error, response) => {
+    }, getMeta(), (error, response) => {
         if (error) printOutput(`[Error] ${error.message}`);
         else printOutput(`[Success] ${response.message}`);
     });
@@ -215,7 +234,7 @@ async function getInventory() {
     const storage_id = await ask('Storage ID (e.g. FRIDGE-001):');
     if(!storage_id) return printOutput('Cancelled.');
 
-    storageClient.GetInventory({ storage_id }, (error, response) => {
+    storageClient.GetInventory({ storage_id }, getMeta(), (error, response) => {
         if (error) {
             printOutput(`[Error] ${error.message}`);
         } else {
@@ -240,7 +259,7 @@ async function removeBatch() {
     if(!batch_id) return printOutput('Cancelled.');
     const reason = await ask('Alasan penghapusan:');
 
-    storageClient.RemoveBatch({ batch_id, reason }, (error, response) => {
+    storageClient.RemoveBatch({ batch_id, reason }, getMeta(), (error, response) => {
         if (error) printOutput(`[Error] ${error.message}`);
         else printOutput(`[Success] ${response.message}`);
     });
@@ -250,7 +269,7 @@ async function getAlerts() {
     printOutput('--- DAFTAR ALERT AKTIF ---');
     const storage_id = await ask('Storage ID (kosong=Semua):');
 
-    alertClient.GetAlerts({ storage_id: storage_id || '', severity: 0, resolved_only: false }, (error, response) => {
+    alertClient.GetAlerts({ storage_id: storage_id || '', severity: 0, resolved_only: false }, getMeta(), (error, response) => {
         if (error) {
             printOutput(`[Error] ${error.message}`);
         } else {
@@ -272,7 +291,7 @@ async function resolveAlert() {
 
     alertClient.ResolveAlert({
         alert_id, resolved_by: userName, resolution_notes
-    }, (error, response) => {
+    }, getMeta(), (error, response) => {
         if (error) printOutput(`[Error] ${error.message}`);
         else printOutput(`[Success] ${response.message}`);
     });
@@ -286,7 +305,7 @@ async function generateDailyReport() {
     reportClient.GenerateDailyReport({
         date: date || new Date().toISOString().split('T')[0],
         storage_id: storage_id || ''
-    }, (error, response) => {
+    }, getMeta(), (error, response) => {
         if (error) printOutput(`[Error] ${error.message}`);
         else {
             printOutput(`Report Date: ${response.report_date}`);
@@ -305,7 +324,7 @@ async function exportCSV() {
 
     reportClient.ExportCSV({
         storage_id, start_time: 0, end_time: Date.now(), format: 'CSV'
-    }, (error, response) => {
+    }, getMeta(), (error, response) => {
         if (error) printOutput(`[Error] ${error.message}`);
         else {
             printOutput(`Export Berhasil!`);
@@ -316,7 +335,7 @@ async function exportCSV() {
 
 async function getComplianceStatus() {
     printOutput('--- COMPLIANCE STATUS ---');
-    reportClient.GetComplianceStatus({ period_start: '', period_end: '' }, (error, response) => {
+    reportClient.GetComplianceStatus({ period_start: '', period_end: '' }, getMeta(), (error, response) => {
         if (error) printOutput(`[Error] ${error.message}`);
         else {
             printOutput(`Overall: ${response.overall_compliant ? 'COMPLIANT' : 'NON-COMPLIANT'}`);
@@ -374,7 +393,7 @@ screen.key(['escape', 'C-c'], function() {
 function loadSystemOverview() {
     const user = MOCK_USERS[currentUserId.toUpperCase()];
     
-    monitoringClient.GetAllStorageStatus({}, (error, response) => {
+    monitoringClient.GetAllStorageStatus({}, getMeta(), (error, response) => {
         let storageCount = 0;
         let onlineCount = 0;
         

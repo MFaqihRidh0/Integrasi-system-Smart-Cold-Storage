@@ -98,11 +98,44 @@ async function startServer() {
 
     const server = new grpc.Server();
 
-    // Register semua services
-    server.addService(medicoldProto.StorageService.service, storageServiceHandlers);
-    server.addService(medicoldProto.MonitoringService.service, monitoringServiceHandlers);
-    server.addService(medicoldProto.AlertService.service, alertServiceHandlers);
-    server.addService(medicoldProto.ReportService.service, reportServiceHandlers);
+    // Wrapper untuk sistem audit logging user
+    function wrapServiceWithLogger(serviceHandlers) {
+        const wrapped = {};
+        for (const [methodName, handler] of Object.entries(serviceHandlers)) {
+            // JANGAN BUNGKUS fungsi streaming karena grpc-js membaca .length dari fungsi untuk mendeteksi tipe stream
+            // membungkus Stream dengan (call, callback) akan membuatnya salah dideteksi sebagai Unary
+            if (methodName === 'WatchAlerts' || methodName === 'StreamTelemetry') {
+                wrapped[methodName] = handler;
+                continue;
+            }
+
+            wrapped[methodName] = function(call, callback) {
+                let userName, userId;
+                if (call.metadata) {
+                    const nameMeta = call.metadata.get('user-name');
+                    const idMeta = call.metadata.get('user-id');
+                    if (nameMeta && nameMeta.length > 0) userName = nameMeta[0];
+                    if (idMeta && idMeta.length > 0) userId = idMeta[0];
+                }
+                
+                // Cek nama user untuk membedakan antara aksi organik vs backend refresh
+                if (userName && methodName !== 'GetAllStorageStatus') {
+                    console.log(`[AUDIT] 👤 User '${userName}' (${userId}) executed: ${methodName}`);
+                    store.broadcastUserAction(userName, userId, methodName);
+                }
+                
+                // Pastikan tidak menggunakan return Promise (async) secara implisit
+                handler(call, callback);
+            };
+        }
+        return wrapped;
+    }
+
+    // Register semua services dengan audit wrapper
+    server.addService(medicoldProto.StorageService.service, wrapServiceWithLogger(storageServiceHandlers));
+    server.addService(medicoldProto.MonitoringService.service, wrapServiceWithLogger(monitoringServiceHandlers));
+    server.addService(medicoldProto.AlertService.service, wrapServiceWithLogger(alertServiceHandlers));
+    server.addService(medicoldProto.ReportService.service, wrapServiceWithLogger(reportServiceHandlers));
 
     const portNum = process.env.PORT || 50051;
     const PORT = `0.0.0.0:${portNum}`;
